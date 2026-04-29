@@ -1,0 +1,17 @@
+# Build outputs
+build/
+bin/
+lib/
+
+# Logs
+log/
+*.log
+
+# VS Code local settings
+.vscode/
+
+# Personal notes
+LEARNING_PLAN.md
+
+# macOS
+.DS_Store
