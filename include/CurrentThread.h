@@ -1,7 +1,9 @@
 #pragma once
 
 #include <unistd.h>
+#ifdef __linux__
 #include <sys/syscall.h>
+#endif
 namespace CurrentThread
 {
     extern thread_local int t_cachedTid; // 保存tid缓存 因为系统调用非常耗时 拿到tid后将其保存

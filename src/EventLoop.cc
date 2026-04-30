@@ -1,4 +1,6 @@
+#ifdef __linux__
 #include <sys/eventfd.h>
+#endif
 #include <unistd.h>
 #include <fcntl.h>
 #include <errno.h>
@@ -30,15 +32,39 @@ const int kPollTimeMs = 10000; // 10000毫秒 = 10秒钟
  *     eventfd还可以用于同亲缘关系的进程之间的通信。
  *     eventfd用于不同亲缘关系的进程之间通信的话需要把eventfd放在几个进程共享的共享内存中（没有测试过）。
  */
-// 创建wakeupfd 用来notify唤醒subReactor处理新来的channel
-int createEventfd()
+// 创建wakeup fd用来notify唤醒subReactor处理新来的channel。
+int createWakeupFd(int *writeFd)
 {
+#ifdef __linux__
     int evtfd = ::eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
     if (evtfd < 0)
     {
         LOG_FATAL<<"eventfd error:%d"<<errno;
     }
+    *writeFd = evtfd;
     return evtfd;
+#else
+    int fds[2];
+    if (::pipe(fds) < 0)
+    {
+        LOG_FATAL<<"pipe error:%d"<<errno;
+    }
+    for (int fd : fds)
+    {
+        int flags = ::fcntl(fd, F_GETFL, 0);
+        if (flags < 0 || ::fcntl(fd, F_SETFL, flags | O_NONBLOCK) < 0)
+        {
+            LOG_FATAL<<"pipe set nonblocking error:%d"<<errno;
+        }
+        flags = ::fcntl(fd, F_GETFD, 0);
+        if (flags < 0 || ::fcntl(fd, F_SETFD, flags | FD_CLOEXEC) < 0)
+        {
+            LOG_FATAL<<"pipe set cloexec error:%d"<<errno;
+        }
+    }
+    *writeFd = fds[1];
+    return fds[0];
+#endif
 }
 
 EventLoop::EventLoop()
@@ -47,7 +73,7 @@ EventLoop::EventLoop()
     , callingPendingFunctors_(false)
     , threadId_(CurrentThread::tid())
     , poller_(Poller::newDefaultPoller(this))
-    , wakeupFd_(createEventfd())
+    , wakeupFd_(createWakeupFd(&wakeupWriteFd_))
     , wakeupChannel_(new Channel(this, wakeupFd_))
 {
     LOG_DEBUG<<"EventLoop created"<<this<<"in thread"<<threadId_;
@@ -70,6 +96,10 @@ EventLoop::~EventLoop()
     wakeupChannel_->disableAll(); // 给Channel移除所有感兴趣的事件
     wakeupChannel_->remove();     // 把Channel从EventLoop上删除掉
     ::close(wakeupFd_);
+    if (wakeupWriteFd_ != wakeupFd_)
+    {
+        ::close(wakeupWriteFd_);
+    }
     t_loopInThisThread = nullptr;
 }
 
@@ -168,7 +198,7 @@ void EventLoop::handleRead()
 void EventLoop::wakeup()
 {
     uint64_t one = 1;
-    ssize_t n = write(wakeupFd_, &one, sizeof(one));
+    ssize_t n = write(wakeupWriteFd_, &one, sizeof(one));
     if (n != sizeof(one))
     {
         LOG_ERROR<<"EventLoop::wakeup() writes"<<n<<"bytes instead of 8";

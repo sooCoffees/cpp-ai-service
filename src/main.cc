@@ -4,6 +4,9 @@
 #include <Logger.h>
 #include <sys/stat.h>
 #include <libgen.h>
+#include <cctype>
+#include <cstdlib>
+#include <map>
 #include <sstream>
 #include "AsyncLogging.h"
 #include "LFU.h"
@@ -13,6 +16,41 @@ static const off_t kRollSize = 1*1024*1024;
 
 namespace
 {
+struct HttpRequest
+{
+    std::string method;
+    std::string path;
+    std::string version;
+    std::map<std::string, std::string> headers;
+    std::string body;
+};
+
+std::string toLower(std::string value)
+{
+    for (char &ch : value)
+    {
+        ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+    }
+    return value;
+}
+
+std::string trim(const std::string &value)
+{
+    size_t begin = 0;
+    while (begin < value.size() && std::isspace(static_cast<unsigned char>(value[begin])))
+    {
+        ++begin;
+    }
+
+    size_t end = value.size();
+    while (end > begin && std::isspace(static_cast<unsigned char>(value[end - 1])))
+    {
+        --end;
+    }
+
+    return value.substr(begin, end - begin);
+}
+
 std::string jsonEscape(const std::string &input)
 {
     std::string output;
@@ -44,21 +82,130 @@ std::string jsonEscape(const std::string &input)
     return output;
 }
 
-std::string extractRequestPath(const std::string &request)
+bool parseHttpRequest(const std::string &raw, HttpRequest *request)
 {
-    const size_t methodEnd = request.find(' ');
-    if (methodEnd == std::string::npos)
+    const size_t requestLineEnd = raw.find("\r\n");
+    if (requestLineEnd == std::string::npos)
     {
-        return "/";
+        return false;
     }
 
-    const size_t pathEnd = request.find(' ', methodEnd + 1);
-    if (pathEnd == std::string::npos)
+    std::istringstream requestLine(raw.substr(0, requestLineEnd));
+    if (!(requestLine >> request->method >> request->path >> request->version))
     {
-        return "/";
+        return false;
     }
 
-    return request.substr(methodEnd + 1, pathEnd - methodEnd - 1);
+    const size_t headerEnd = raw.find("\r\n\r\n");
+    if (headerEnd == std::string::npos)
+    {
+        return false;
+    }
+
+    size_t lineStart = requestLineEnd + 2;
+    while (lineStart < headerEnd)
+    {
+        const size_t lineEnd = raw.find("\r\n", lineStart);
+        if (lineEnd == std::string::npos || lineEnd > headerEnd)
+        {
+            return false;
+        }
+
+        const std::string line = raw.substr(lineStart, lineEnd - lineStart);
+        const size_t colon = line.find(':');
+        if (colon != std::string::npos)
+        {
+            request->headers[toLower(trim(line.substr(0, colon)))] = trim(line.substr(colon + 1));
+        }
+        lineStart = lineEnd + 2;
+    }
+
+    request->body = raw.substr(headerEnd + 4);
+    auto contentLength = request->headers.find("content-length");
+    if (contentLength != request->headers.end())
+    {
+        const size_t expected = static_cast<size_t>(std::strtoul(contentLength->second.c_str(), nullptr, 10));
+        if (request->body.size() > expected)
+        {
+            request->body.resize(expected);
+        }
+    }
+
+    return true;
+}
+
+bool extractJsonStringField(const std::string &json, const std::string &field, std::string *value)
+{
+    const std::string key = "\"" + field + "\"";
+    const size_t keyPos = json.find(key);
+    if (keyPos == std::string::npos)
+    {
+        return false;
+    }
+
+    const size_t colon = json.find(':', keyPos + key.size());
+    if (colon == std::string::npos)
+    {
+        return false;
+    }
+
+    size_t pos = colon + 1;
+    while (pos < json.size() && std::isspace(static_cast<unsigned char>(json[pos])))
+    {
+        ++pos;
+    }
+
+    if (pos >= json.size() || json[pos] != '"')
+    {
+        return false;
+    }
+
+    ++pos;
+    std::string parsed;
+    while (pos < json.size())
+    {
+        char ch = json[pos++];
+        if (ch == '"')
+        {
+            *value = parsed;
+            return true;
+        }
+        if (ch == '\\' && pos < json.size())
+        {
+            char escaped = json[pos++];
+            switch (escaped)
+            {
+            case '"':
+            case '\\':
+            case '/':
+                parsed += escaped;
+                break;
+            case 'n':
+                parsed += '\n';
+                break;
+            case 'r':
+                parsed += '\r';
+                break;
+            case 't':
+                parsed += '\t';
+                break;
+            default:
+                parsed += escaped;
+                break;
+            }
+        }
+        else
+        {
+            parsed += ch;
+        }
+    }
+
+    return false;
+}
+
+std::string jsonError(const std::string &message)
+{
+    return "{\"ok\":false,\"error\":\"" + jsonEscape(message) + "\"}";
 }
 
 std::string httpResponse(const std::string &status,
@@ -75,16 +222,71 @@ std::string httpResponse(const std::string &status,
     return oss.str();
 }
 
-std::string fixedAiReply(const std::string &requestBody)
+std::string jsonResponse(const std::string &status, const std::string &body)
 {
+    return httpResponse(status, "application/json; charset=utf-8", body);
+}
+
+std::string handleChatRequest(const HttpRequest &request)
+{
+    if (request.method != "POST")
+    {
+        return jsonResponse("405 Method Not Allowed", jsonError("/chat expects POST"));
+    }
+
+    std::string message;
+    if (!extractJsonStringField(request.body, "message", &message) || message.empty())
+    {
+        return jsonResponse("400 Bad Request", jsonError("request body must contain a non-empty string field named message"));
+    }
+
     std::ostringstream body;
     body << "{"
          << "\"ok\":true,"
-         << "\"reply\":\"AI endpoint is ready. Next step is wiring a real model client.\","
-         << "\"received\":\"" << jsonEscape(requestBody) << "\""
+         << "\"message\":\"" << jsonEscape(message) << "\","
+         << "\"reply\":\"Stub AI reply for: " << jsonEscape(message) << "\""
          << "}";
-    return body.str();
+    return jsonResponse("200 OK", body.str());
 }
+
+std::string handleHomeRequest()
+{
+    const std::string body =
+        "<!doctype html><html><head><meta charset=\"utf-8\">"
+        "<title>cpp-ai-service</title></head>"
+        "<body><h1>cpp-ai-service</h1><p>POST /chat with JSON {\"message\":\"...\"}.</p></body></html>";
+    return httpResponse("200 OK", "text/html; charset=utf-8", body);
+}
+
+std::string handleRequest(const HttpRequest &request)
+{
+    if (request.path == "/chat")
+    {
+        return handleChatRequest(request);
+    }
+    if (request.path == "/health")
+    {
+        return jsonResponse("200 OK", "{\"ok\":true}");
+    }
+    if (request.path == "/")
+    {
+        return handleHomeRequest();
+    }
+
+    return jsonResponse("404 Not Found", jsonError("route not found"));
+}
+
+std::string handleRawRequest(const std::string &raw)
+{
+    HttpRequest request;
+    if (!parseHttpRequest(raw, &request))
+    {
+        return jsonResponse("400 Bad Request", jsonError("malformed HTTP request"));
+    }
+
+    return handleRequest(request);
+}
+
 }
 
 class EchoServer
@@ -127,32 +329,7 @@ private:
     void onMessage(const TcpConnectionPtr &conn, Buffer *buf, Timestamp time)
     {
         const std::string request = buf->retrieveAllAsString();
-        const std::string path = extractRequestPath(request);
-
-        std::string response;
-        if (path == "/chat")
-        {
-            const size_t bodyStart = request.find("\r\n\r\n");
-            const std::string requestBody =
-                bodyStart == std::string::npos ? "" : request.substr(bodyStart + 4);
-            response = httpResponse("200 OK",
-                                    "application/json; charset=utf-8",
-                                    fixedAiReply(requestBody));
-        }
-        else if (path == "/health")
-        {
-            response = httpResponse("200 OK",
-                                    "application/json; charset=utf-8",
-                                    "{\"ok\":true}");
-        }
-        else
-        {
-            const std::string body =
-                "<!doctype html><html><head><meta charset=\"utf-8\">"
-                "<title>cpp-ai-service</title></head>"
-                "<body><h1>cpp-ai-service</h1><p>POST /chat to use the AI endpoint.</p></body></html>";
-            response = httpResponse("200 OK", "text/html; charset=utf-8", body);
-        }
+        const std::string response = handleRawRequest(request);
 
         conn->send(response);
         conn->shutdown();   // 关闭写端，HTTP/1.0 风格一请求一响应

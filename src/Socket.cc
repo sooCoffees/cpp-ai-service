@@ -1,4 +1,5 @@
 #include <unistd.h>
+#include <fcntl.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <string.h>
@@ -18,7 +19,7 @@ void Socket::bindAddress(const InetAddress &localaddr)
 {
     if (0 != ::bind(sockfd_, (sockaddr *)localaddr.getSockAddr(), sizeof(sockaddr_in)))
     {
-        LOG_FATAL<<"bind sockfd:"<<sockfd_ <<"fail";
+        LOG_FATAL<<"bind sockfd:"<<sockfd_ <<"fail errno="<<errno;
     }
 }
 
@@ -42,9 +43,27 @@ int Socket::accept(InetAddress *peeraddr)
     socklen_t len = sizeof(addr);
     ::memset(&addr, 0, sizeof(addr));
     // fixed : int connfd = ::accept(sockfd_, (sockaddr *)&addr, &len);
+#ifdef __linux__
     int connfd = ::accept4(sockfd_, (sockaddr *)&addr, &len, SOCK_NONBLOCK | SOCK_CLOEXEC);
+#else
+    int connfd = ::accept(sockfd_, (sockaddr *)&addr, &len);
+#endif
     if (connfd >= 0)
     {
+#ifndef __linux__
+        int flags = ::fcntl(connfd, F_GETFL, 0);
+        if (flags < 0 || ::fcntl(connfd, F_SETFL, flags | O_NONBLOCK) < 0)
+        {
+            ::close(connfd);
+            return -1;
+        }
+        flags = ::fcntl(connfd, F_GETFD, 0);
+        if (flags < 0 || ::fcntl(connfd, F_SETFD, flags | FD_CLOEXEC) < 0)
+        {
+            ::close(connfd);
+            return -1;
+        }
+#endif
         peeraddr->setSockAddr(addr);
     }
     return connfd;

@@ -79,6 +79,7 @@ private:
     std::unique_ptr<Poller> poller_;
     std::unique_ptr<TimerQueue> timerQueue_;
     int wakeupFd_; // 作用：当mainLoop获取一个新用户的Channel 需通过轮询算法选择一个subLoop 通过该成员唤醒subLoop处理Channel
+    int wakeupWriteFd_;
     std::unique_ptr<Channel> wakeupChannel_;
 
     ChannelList activeChannels_; // 返回Poller检测到当前有事件发生的所有Channel列表

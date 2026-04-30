@@ -4,12 +4,17 @@
 #include <Timer.h>
 #include <TimerQueue.h>
 
+#ifdef __linux__
 #include <sys/timerfd.h>
+#else
+#include <fcntl.h>
+#endif
 #include <unistd.h>
 #include <string.h>
 
-int createTimerfd()
+int createTimerfd(int *writeFd)
 {
+#ifdef __linux__
     /**
      * CLOCK_MONOTONIC：绝对时间
      * TFD_NONBLOCK：非阻塞
@@ -20,12 +25,36 @@ int createTimerfd()
     {
         LOG_ERROR << "Failed in timerfd_create";
     }
+    *writeFd = timerfd;
     return timerfd;
+#else
+    int fds[2];
+    if (::pipe(fds) < 0)
+    {
+        LOG_ERROR << "Failed in timer pipe";
+        return -1;
+    }
+    for (int fd : fds)
+    {
+        int flags = ::fcntl(fd, F_GETFL, 0);
+        if (flags >= 0)
+        {
+            ::fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+        }
+        flags = ::fcntl(fd, F_GETFD, 0);
+        if (flags >= 0)
+        {
+            ::fcntl(fd, F_SETFD, flags | FD_CLOEXEC);
+        }
+    }
+    *writeFd = fds[1];
+    return fds[0];
+#endif
 }
 
 TimerQueue::TimerQueue(EventLoop* loop)
     : loop_(loop),
-      timerfd_(createTimerfd()),
+      timerfd_(createTimerfd(&timerWriteFd_)),
       timerfdChannel_(loop_, timerfd_),
       timers_()
 {
@@ -39,6 +68,10 @@ TimerQueue::~TimerQueue()
     timerfdChannel_.disableAll();
     timerfdChannel_.remove();
     ::close(timerfd_);
+    if (timerWriteFd_ != timerfd_)
+    {
+        ::close(timerWriteFd_);
+    }
     // 删除所有定时器
     for (const Entry& timer : timers_)
     {
@@ -70,6 +103,7 @@ void TimerQueue::addTimerInLoop(Timer* timer)
 // 重置timerfd
 void TimerQueue::resetTimerfd(int timerfd_, Timestamp expiration)
 {
+#ifdef __linux__
     struct itimerspec newValue;
     struct itimerspec oldValue;
     memset(&newValue, '\0', sizeof(newValue));
@@ -93,6 +127,10 @@ void TimerQueue::resetTimerfd(int timerfd_, Timestamp expiration)
     {
         LOG_ERROR << "timerfd_settime faield()";
     }
+#else
+    (void)timerfd_;
+    (void)expiration;
+#endif
 }
 
 void ReadTimerFd(int timerfd) 

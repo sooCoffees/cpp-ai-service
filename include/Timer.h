@@ -4,6 +4,7 @@
 #include "noncopyable.h"
 #include "Timestamp.h"
 #include <functional>
+#include <utility>
 
 /**
  * Timer用于描述一个定时器
@@ -15,7 +16,7 @@ public:
     using TimerCallback = std::function<void()>;
 
     Timer(TimerCallback cb, Timestamp when, double interval)
-        : callback_(move(cb)),
+        : callback_(std::move(cb)),
           expiration_(when),
           interval_(interval),
           repeat_(interval > 0.0) // 一次性定时器设置为0

@@ -48,6 +48,7 @@ private:
 
     EventLoop* loop_;           // 所属的EventLoop
     const int timerfd_;         // timerfd是Linux提供的定时器接口
+    int timerWriteFd_;
     Channel timerfdChannel_;    // 封装timerfd_文件描述符
     // Timer list sorted by expiration
     TimerList timers_;          // 定时器队列（内部实现是红黑树）

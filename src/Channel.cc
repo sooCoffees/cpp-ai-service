@@ -1,12 +1,21 @@
+#ifdef __linux__
 #include <sys/epoll.h>
+#else
+#include <poll.h>
+#endif
 
 #include <Channel.h>
 #include <EventLoop.h>
 #include <Logger.h>
 
 const int Channel::kNoneEvent = 0; //空事件
+#ifdef __linux__
 const int Channel::kReadEvent = EPOLLIN | EPOLLPRI; //读事件
 const int Channel::kWriteEvent = EPOLLOUT; //写事件
+#else
+const int Channel::kReadEvent = POLLIN | POLLPRI; //读事件
+const int Channel::kWriteEvent = POLLOUT; //写事件
+#endif
 
 // EventLoop: ChannelList Poller
 Channel::Channel(EventLoop *loop, int fd)
@@ -72,7 +81,7 @@ void Channel::handleEventWithGuard(Timestamp receiveTime)
 {
     LOG_INFO<<"channel handleEvent revents:"<<revents_;
     // 关闭
-    if ((revents_ & EPOLLHUP) && !(revents_ & EPOLLIN)) // 当TcpConnection对应Channel 通过shutdown 关闭写端 epoll触发EPOLLHUP
+    if ((revents_ & POLLHUP) && !(revents_ & kReadEvent)) // 当TcpConnection对应Channel 通过shutdown 关闭写端触发HUP
     {
         if (closeCallback_)
         {
@@ -80,7 +89,7 @@ void Channel::handleEventWithGuard(Timestamp receiveTime)
         }
     }
     // 错误
-    if (revents_ & EPOLLERR)
+    if (revents_ & POLLERR)
     {
         if (errorCallback_)
         {
@@ -88,7 +97,7 @@ void Channel::handleEventWithGuard(Timestamp receiveTime)
         }
     }
     // 读
-    if (revents_ & (EPOLLIN | EPOLLPRI))
+    if (revents_ & kReadEvent)
     {
         if (readCallback_)
         {
@@ -96,7 +105,7 @@ void Channel::handleEventWithGuard(Timestamp receiveTime)
         }
     }
     // 写
-    if (revents_ & EPOLLOUT)
+    if (revents_ & kWriteEvent)
     {
         if (writeCallback_)
         {

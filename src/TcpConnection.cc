@@ -5,7 +5,9 @@
 #include <sys/socket.h>
 #include <string.h>
 #include <netinet/tcp.h>
+#ifdef __linux__
 #include <sys/sendfile.h>
+#endif
 #include <fcntl.h> // for open
 #include <unistd.h> // for close
 
@@ -290,8 +292,15 @@ void TcpConnection::sendFileInLoop(int fileDescriptor, off_t offset, size_t coun
 
     // 表示Channel第一次开始写数据或者outputBuffer缓冲区中没有数据
     if (!channel_->isWriting() && outputBuffer_.readableBytes() == 0) {
+#ifdef __APPLE__
+        off_t len = static_cast<off_t>(remaining);
+        int ret = sendfile(fileDescriptor, socket_->fd(), offset, &len, nullptr, 0);
+        bytesSent = len;
+        if (ret == 0 || bytesSent > 0) {
+#else
         bytesSent = sendfile(socket_->fd(), fileDescriptor, &offset, remaining);
         if (bytesSent >= 0) {
+#endif
             remaining -= bytesSent;
             if (remaining == 0 && writeCompleteCallback_) {
                 // remaining为0意味着数据正好全部发送完，就不需要给其设置写事件的监听。

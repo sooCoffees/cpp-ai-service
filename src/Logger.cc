@@ -10,7 +10,12 @@ namespace ThreadInfo
 }
 const char *getErrnoMsg(int savedErrno)
 {
+#if defined(__APPLE__) || ((_POSIX_C_SOURCE >= 200112L) && !defined(_GNU_SOURCE))
+    strerror_r(savedErrno, ThreadInfo::t_errnobuf, sizeof(ThreadInfo::t_errnobuf));
+    return ThreadInfo::t_errnobuf;
+#else
     return strerror_r(savedErrno, ThreadInfo::t_errnobuf, sizeof(ThreadInfo::t_errnobuf));
+#endif
 }
 // 根据Level 返回level_名字
 const char *getLevelName[Logger::LogLevel::LEVEL_COUNT]{
@@ -104,6 +109,7 @@ Logger::~Logger()
     // FATAL情况终止程序
     if (impl_.level_ == FATAL)
     {
+        fwrite(buffer.data(), buffer.length(), sizeof(char), stderr);
         g_flush();
         abort();
     }

@@ -1,7 +1,8 @@
 #include <Thread.h>
 #include <CurrentThread.h>
 
-#include <semaphore.h>
+#include <condition_variable>
+#include <mutex>
 
 std::atomic_int Thread::numCreated_(0);
 
@@ -26,17 +27,23 @@ Thread::~Thread()
 void Thread::start()                                                        // 一个Thread对象 记录的就是一个新线程的详细信息
 {
     started_ = true;
-    sem_t sem;
-    sem_init(&sem, false, 0);                                               // false指的是 不设置进程间共享
+    std::mutex mutex;
+    std::condition_variable cond;
+    bool tidReady = false;
     // 开启线程
     thread_ = std::shared_ptr<std::thread>(new std::thread([&]() {
         tid_ = CurrentThread::tid();                                        // 获取线程的tid值
-        sem_post(&sem);
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            tidReady = true;
+        }
+        cond.notify_one();
         func_();                                                            // 开启一个新线程 专门执行该线程函数
     }));
 
     // 这里必须等待获取上面新创建的线程的tid值
-    sem_wait(&sem);
+    std::unique_lock<std::mutex> lock(mutex);
+    cond.wait(lock, [&]() { return tidReady; });
 }
 
 // C++ std::thread 中join()和detach()的区别：https://blog.nowcoder.net/n/8fcd9bb6e2e94d9596cf0a45c8e5858a

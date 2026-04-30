@@ -1,6 +1,7 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <unistd.h>
 #include <Acceptor.h>
 #include <Logger.h>
@@ -8,11 +9,27 @@
 
 static int createNonblocking()
 {
+#ifdef __linux__
     int sockfd = ::socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, IPPROTO_TCP);
+#else
+    int sockfd = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+#endif
     if (sockfd < 0)
     {
          LOG_FATAL << "listen socket create err " << errno;
     }
+#ifndef __linux__
+    int flags = ::fcntl(sockfd, F_GETFL, 0);
+    if (flags < 0 || ::fcntl(sockfd, F_SETFL, flags | O_NONBLOCK) < 0)
+    {
+         LOG_FATAL << "listen socket set nonblocking err " << errno;
+    }
+    flags = ::fcntl(sockfd, F_GETFD, 0);
+    if (flags < 0 || ::fcntl(sockfd, F_SETFD, flags | FD_CLOEXEC) < 0)
+    {
+         LOG_FATAL << "listen socket set cloexec err " << errno;
+    }
+#endif
     return sockfd;
 }
 
