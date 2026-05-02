@@ -255,10 +255,393 @@ std::string handleChatRequest(const HttpRequest &request, const AiClient &aiClie
 
 std::string handleHomeRequest()
 {
-    const std::string body =
-        "<!doctype html><html><head><meta charset=\"utf-8\">"
-        "<title>cpp-ai-service</title></head>"
-        "<body><h1>cpp-ai-service</h1><p>POST /chat with JSON {\"message\":\"...\"}.</p></body></html>";
+    const std::string body = R"HTML(<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>cpp-ai-service</title>
+<style>
+:root {
+  color-scheme: dark;
+  --bg: #111312;
+  --panel: #181b1a;
+  --panel-2: #202422;
+  --border: #303633;
+  --text: #f3f5f2;
+  --muted: #9aa39d;
+  --accent: #19c37d;
+  --danger: #ff6b6b;
+  --shadow: 0 18px 60px rgba(0, 0, 0, 0.28);
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+button, textarea, select { font: inherit; }
+.app {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+}
+.sidebar {
+  border-right: 1px solid var(--border);
+  background: #151716;
+  padding: 18px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 6px;
+  font-weight: 700;
+}
+.logo {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  background: var(--accent);
+  color: #07110c;
+  font-weight: 900;
+}
+.new-chat, .send {
+  border: 0;
+  cursor: pointer;
+  border-radius: 8px;
+  background: var(--text);
+  color: #101211;
+  font-weight: 700;
+}
+.new-chat {
+  width: 100%;
+  min-height: 42px;
+}
+.side-block {
+  border-top: 1px solid var(--border);
+  padding-top: 16px;
+}
+.side-label {
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0;
+}
+select {
+  width: 100%;
+  min-height: 40px;
+  color: var(--text);
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0 10px;
+}
+.hint {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+.main {
+  min-width: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+.topbar {
+  min-height: 60px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 0 22px;
+}
+.title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.title strong { font-size: 15px; }
+.status {
+  color: var(--muted);
+  font-size: 13px;
+}
+.status.ok { color: var(--accent); }
+.status.error { color: var(--danger); }
+.messages {
+  overflow-y: auto;
+  padding: 28px 18px;
+}
+.message {
+  width: min(860px, 100%);
+  margin: 0 auto 18px;
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  gap: 14px;
+}
+.avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  background: var(--panel-2);
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+}
+.assistant .avatar {
+  background: rgba(25, 195, 125, 0.18);
+  color: var(--accent);
+}
+.bubble {
+  min-width: 0;
+  padding: 10px 0;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.assistant .bubble {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px 16px;
+  box-shadow: var(--shadow);
+}
+.composer {
+  border-top: 1px solid var(--border);
+  padding: 16px 18px 22px;
+  background: rgba(17, 19, 18, 0.92);
+}
+.composer-inner {
+  width: min(860px, 100%);
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 48px;
+  gap: 10px;
+  align-items: end;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px;
+}
+textarea {
+  width: 100%;
+  min-height: 48px;
+  max-height: 180px;
+  resize: none;
+  border: 0;
+  outline: 0;
+  color: var(--text);
+  background: transparent;
+  line-height: 1.5;
+  padding: 11px 8px;
+}
+.send {
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  font-size: 20px;
+}
+.send:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+@media (max-width: 760px) {
+  .app { grid-template-columns: 1fr; }
+  .sidebar {
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+    padding: 12px;
+  }
+  .side-block { display: none; }
+  .topbar { padding: 0 14px; }
+  .messages { padding: 20px 14px; }
+  .message {
+    grid-template-columns: 32px minmax(0, 1fr);
+    gap: 10px;
+  }
+  .avatar {
+    width: 32px;
+    height: 32px;
+  }
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand"><div class="logo">AI</div><span>cpp-ai-service</span></div>
+    <button class="new-chat" id="newChat">New chat</button>
+    <div class="side-block">
+      <p class="side-label">Tool</p>
+      <select id="toolSelect">
+        <option value="">No tool</option>
+      </select>
+      <p class="hint">Tools are served by the local C++ ToolRegistry through /tools.</p>
+    </div>
+    <div class="side-block">
+      <p class="side-label">Gateway</p>
+      <p class="hint">This UI posts to /chat. The current backend still returns a stub AI reply unless a local tool is selected.</p>
+    </div>
+  </aside>
+  <main class="main">
+    <header class="topbar">
+      <div class="title">
+        <strong>Chat</strong>
+        <span class="status" id="status">Checking service...</span>
+      </div>
+    </header>
+    <section class="messages" id="messages"></section>
+    <form class="composer" id="chatForm">
+      <div class="composer-inner">
+        <textarea id="messageInput" rows="1" placeholder="Message cpp-ai-service"></textarea>
+        <button class="send" id="sendButton" type="submit" title="Send">↑</button>
+      </div>
+    </form>
+  </main>
+</div>
+<script>
+const messages = document.getElementById('messages');
+const form = document.getElementById('chatForm');
+const input = document.getElementById('messageInput');
+const sendButton = document.getElementById('sendButton');
+const statusEl = document.getElementById('status');
+const toolSelect = document.getElementById('toolSelect');
+const newChat = document.getElementById('newChat');
+
+function setStatus(text, state) {
+  statusEl.textContent = text;
+  statusEl.className = 'status' + (state ? ' ' + state : '');
+}
+
+function addMessage(role, text) {
+  const item = document.createElement('article');
+  item.className = 'message ' + role;
+  const avatar = document.createElement('div');
+  avatar.className = 'avatar';
+  avatar.textContent = role === 'user' ? 'You' : 'AI';
+  const bubble = document.createElement('div');
+  bubble.className = 'bubble';
+  bubble.textContent = text;
+  item.appendChild(avatar);
+  item.appendChild(bubble);
+  messages.appendChild(item);
+  messages.scrollTop = messages.scrollHeight;
+  return bubble;
+}
+
+function resetChat() {
+  messages.innerHTML = '';
+  addMessage('assistant', 'Hi, I am cpp-ai-service. Send a message to test the C++ /chat gateway, or select a local tool from the sidebar.');
+  input.focus();
+}
+
+function resizeInput() {
+  input.style.height = 'auto';
+  input.style.height = Math.min(input.scrollHeight, 180) + 'px';
+}
+
+async function loadHealth() {
+  try {
+    const res = await fetch('/health');
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    setStatus('Service online', 'ok');
+  } catch (err) {
+    setStatus('Service unavailable', 'error');
+  }
+}
+
+async function loadTools() {
+  try {
+    const res = await fetch('/tools');
+    const data = await res.json();
+    if (!data.ok || !Array.isArray(data.tools)) return;
+    data.tools.forEach((tool) => {
+      const option = document.createElement('option');
+      option.value = tool.name;
+      option.textContent = tool.name;
+      option.title = tool.description || '';
+      toolSelect.appendChild(option);
+    });
+  } catch (err) {
+    // Tools are optional for the UI.
+  }
+}
+
+async function sendMessage(text) {
+  const payload = { message: text };
+  if (toolSelect.value) payload.tool = toolSelect.value;
+
+  const res = await fetch('/chat', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  const data = await res.json();
+  if (!res.ok || data.ok === false) {
+    throw new Error(data.error || ('HTTP ' + res.status));
+  }
+
+  let reply = data.reply || '';
+  if (data.tool_used && data.tool_result) {
+    reply += '\n\nTool result:\n' + JSON.stringify(data.tool_result, null, 2);
+  }
+  return reply || '(empty response)';
+}
+
+form.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const text = input.value.trim();
+  if (!text) return;
+
+  addMessage('user', text);
+  input.value = '';
+  resizeInput();
+  input.disabled = true;
+  sendButton.disabled = true;
+  setStatus('Thinking...');
+  const pending = addMessage('assistant', '...');
+
+  try {
+    pending.textContent = await sendMessage(text);
+    setStatus('Service online', 'ok');
+  } catch (err) {
+    pending.textContent = 'Request failed: ' + err.message;
+    setStatus('Request failed', 'error');
+  } finally {
+    input.disabled = false;
+    sendButton.disabled = false;
+    input.focus();
+  }
+});
+
+input.addEventListener('input', resizeInput);
+input.addEventListener('keydown', (event) => {
+  if (event.key === 'Enter' && !event.shiftKey) {
+    event.preventDefault();
+    form.requestSubmit();
+  }
+});
+newChat.addEventListener('click', resetChat);
+
+resetChat();
+resizeInput();
+loadHealth();
+loadTools();
+</script>
+</body>
+</html>)HTML";
     return httpResponse("200 OK", "text/html; charset=utf-8", body);
 }
 
