@@ -8,8 +8,10 @@
 #include <cstdlib>
 #include <map>
 #include <sstream>
+#include "AiClient.h"
 #include "AsyncLogging.h"
 #include "LFU.h"
+#include "ToolRegistry.h"
 #include "memoryPool.h"
 // 日志文件滚动大小为1MB (1*1024*1024 bytes)
 static const off_t kRollSize = 1*1024*1024;
@@ -227,7 +229,7 @@ std::string jsonResponse(const std::string &status, const std::string &body)
     return httpResponse(status, "application/json; charset=utf-8", body);
 }
 
-std::string handleChatRequest(const HttpRequest &request)
+std::string handleChatRequest(const HttpRequest &request, const AiClient &aiClient)
 {
     if (request.method != "POST")
     {
@@ -240,13 +242,15 @@ std::string handleChatRequest(const HttpRequest &request)
         return jsonResponse("400 Bad Request", jsonError("request body must contain a non-empty string field named message"));
     }
 
-    std::ostringstream body;
-    body << "{"
-         << "\"ok\":true,"
-         << "\"message\":\"" << jsonEscape(message) << "\","
-         << "\"reply\":\"Stub AI reply for: " << jsonEscape(message) << "\""
-         << "}";
-    return jsonResponse("200 OK", body.str());
+    std::string tool;
+    extractJsonStringField(request.body, "tool", &tool);
+
+    AiChatRequest chatRequest;
+    chatRequest.message = message;
+    chatRequest.tool = tool;
+
+    const AiChatResponse chatResponse = aiClient.chat(chatRequest);
+    return jsonResponse(chatResponse.status, chatResponse.body);
 }
 
 std::string handleHomeRequest()
@@ -258,11 +262,25 @@ std::string handleHomeRequest()
     return httpResponse("200 OK", "text/html; charset=utf-8", body);
 }
 
-std::string handleRequest(const HttpRequest &request)
+std::string handleToolsRequest(const HttpRequest &request, const ToolRegistry &tools)
+{
+    if (request.method != "GET")
+    {
+        return jsonResponse("405 Method Not Allowed", jsonError("/tools expects GET"));
+    }
+
+    return jsonResponse("200 OK", tools.listToolsJson());
+}
+
+std::string handleRequest(const HttpRequest &request, const AiClient &aiClient, const ToolRegistry &tools)
 {
     if (request.path == "/chat")
     {
-        return handleChatRequest(request);
+        return handleChatRequest(request, aiClient);
+    }
+    if (request.path == "/tools")
+    {
+        return handleToolsRequest(request, tools);
     }
     if (request.path == "/health")
     {
@@ -276,7 +294,7 @@ std::string handleRequest(const HttpRequest &request)
     return jsonResponse("404 Not Found", jsonError("route not found"));
 }
 
-std::string handleRawRequest(const std::string &raw)
+std::string handleRawRequest(const std::string &raw, const AiClient &aiClient, const ToolRegistry &tools)
 {
     HttpRequest request;
     if (!parseHttpRequest(raw, &request))
@@ -284,7 +302,7 @@ std::string handleRawRequest(const std::string &raw)
         return jsonResponse("400 Bad Request", jsonError("malformed HTTP request"));
     }
 
-    return handleRequest(request);
+    return handleRequest(request, aiClient, tools);
 }
 
 }
@@ -295,6 +313,8 @@ public:
     EchoServer(EventLoop *loop, const InetAddress &addr, const std::string &name)
         : server_(loop, addr, name)
         , loop_(loop)
+        , tools_(ToolRegistry::createDefault())
+        , aiClient_(&tools_)
     {
         // 注册回调函数
         server_.setConnectionCallback(
@@ -329,13 +349,15 @@ private:
     void onMessage(const TcpConnectionPtr &conn, Buffer *buf, Timestamp time)
     {
         const std::string request = buf->retrieveAllAsString();
-        const std::string response = handleRawRequest(request);
+        const std::string response = handleRawRequest(request, aiClient_, tools_);
 
         conn->send(response);
         conn->shutdown();   // 关闭写端，HTTP/1.0 风格一请求一响应
     }
     TcpServer server_;
     EventLoop *loop_;
+    ToolRegistry tools_;
+    AiClient aiClient_;
 
 };
 AsyncLogging* g_asyncLog = NULL;
