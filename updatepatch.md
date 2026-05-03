@@ -2,8 +2,6 @@
 
 ## 2026-05-03
 
-Status: uploaded to GitHub.
-
 Changes:
 
 - Added OpenAI-compatible provider support.
