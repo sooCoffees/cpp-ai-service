@@ -183,8 +183,10 @@ Example response:
   "ai": {
     "provider": "stub",
     "model": "stub-local",
+    "base_url": "https://api.openai.com/v1",
     "api_key_configured": false,
-    "cache_capacity": 64
+    "cache_capacity": 64,
+    "timeout_seconds": 20
   }
 }
 ```
@@ -281,23 +283,47 @@ The gateway reads runtime configuration from environment variables:
 ```bash
 CPP_AI_PROVIDER=stub
 CPP_AI_MODEL=stub-local
+CPP_AI_BASE_URL=https://api.openai.com/v1
+CPP_AI_API_KEY=...
 CPP_AI_CACHE_CAPACITY=64
+CPP_AI_TIMEOUT_SECONDS=20
 ```
 
-`OPENAI_API_KEY` is checked only as a boolean configuration signal for now. The current code does not call a real provider yet and does not print the key.
+`CPP_AI_API_KEY` is the generic API key variable. The service also checks common provider variables such as `OPENAI_API_KEY`, `DEEPSEEK_API_KEY`, `OPENROUTER_API_KEY`, and `GROQ_API_KEY`. API keys are never printed in `/health`; only `api_key_configured` is exposed.
 
-Example:
+Stub mode:
+
+```bash
+CPP_AI_PROVIDER=stub CPP_AI_MODEL=stub-local ./bin/main
+```
+
+OpenAI-compatible mode:
+
+```bash
+CPP_AI_PROVIDER=openai_compatible \
+CPP_AI_BASE_URL=https://api.deepseek.com/v1 \
+CPP_AI_MODEL=deepseek-chat \
+CPP_AI_API_KEY=... \
+./bin/main
+```
+
+Provider shortcuts:
 
 ```bash
 CPP_AI_PROVIDER=openai CPP_AI_MODEL=gpt-4.1-mini OPENAI_API_KEY=... ./bin/main
+CPP_AI_PROVIDER=deepseek CPP_AI_MODEL=deepseek-chat DEEPSEEK_API_KEY=... ./bin/main
+CPP_AI_PROVIDER=openrouter CPP_AI_MODEL=openai/gpt-4.1-mini OPENROUTER_API_KEY=... ./bin/main
+CPP_AI_PROVIDER=groq CPP_AI_MODEL=llama-3.1-8b-instant GROQ_API_KEY=... ./bin/main
+CPP_AI_PROVIDER=ollama CPP_AI_MODEL=llama3.2 ./bin/main
 ```
 
-If `CPP_AI_PROVIDER` is not `stub` and `OPENAI_API_KEY` is missing, the service logs a warning without exposing secrets.
+Supported network providers use an OpenAI-compatible `POST /chat/completions` API. Set `CPP_AI_BASE_URL` to point at any compatible host, including local services like LM Studio or Ollama.
+
+If `CPP_AI_PROVIDER` is not `stub` or `ollama` and no API key is configured, the service logs a warning without exposing secrets.
 
 ## Current Limitations
 
-- `/chat` still returns a stub AI reply.
-- There is no real model provider integration yet. Provider/model/API key configuration is wired, but the reply path is still stubbed.
+- Real provider support currently targets OpenAI-compatible chat completion APIs.
 - JSON parsing is intentionally minimal and currently targets simple request bodies like `{"message":"..."}`.
 - HTTP parsing is still inside `src/main.cc` and should be split into dedicated request/response helpers.
 - Tool execution is local and manually selected by request field; there is no model-driven tool-call loop yet.
@@ -309,8 +335,7 @@ If `CPP_AI_PROVIDER` is not `stub` and `OPENAI_API_KEY` is missing, the service 
 Near-term:
 
 - Move HTTP parsing and response formatting out of `main.cc`
-- Read model provider configuration from environment variables
-- Add real AI provider support with an HTTP client such as `libcurl`
+- Add provider-specific request options for headers, organization/project IDs, and streaming
 - Add request logging for method, path, status, cache hit, tool name, body size, and upstream latency
 
 Later:

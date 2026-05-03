@@ -8,8 +8,6 @@
 namespace
 {
 const int kNew = -1;
-const int kAdded = 1;
-const int kDeleted = 2;
 }
 
 PollPoller::PollPoller(EventLoop *loop)
@@ -39,7 +37,7 @@ Timestamp PollPoller::poll(int timeoutMs, ChannelList *activeChannels)
 void PollPoller::updateChannel(Channel *channel)
 {
     const int index = channel->index();
-    if (index == kNew || index == kDeleted)
+    if (index == kNew)
     {
         struct pollfd pfd;
         pfd.fd = channel->fd();
@@ -53,12 +51,12 @@ void PollPoller::updateChannel(Channel *channel)
     else
     {
         struct pollfd &pfd = pollfds_[index];
+        pfd.fd = channel->fd();
         pfd.events = static_cast<short>(channel->events());
         pfd.revents = 0;
         if (channel->isNoneEvent())
         {
             pfd.fd = -channel->fd() - 1;
-            channel->set_index(kDeleted);
         }
     }
 }
