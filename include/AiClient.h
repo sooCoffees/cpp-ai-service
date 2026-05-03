@@ -2,7 +2,19 @@
 
 #include <string>
 
+#include "LFU.h"
+
 class ToolRegistry;
+
+struct AiClientConfig
+{
+    std::string provider;
+    std::string model;
+    bool apiKeyConfigured;
+    int cacheCapacity;
+
+    static AiClientConfig fromEnvironment();
+};
 
 struct AiChatRequest
 {
@@ -20,10 +32,20 @@ struct AiChatResponse
 class AiClient
 {
 public:
-    explicit AiClient(const ToolRegistry *tools = nullptr);
+    explicit AiClient(const ToolRegistry *tools = nullptr,
+                      const AiClientConfig &config = AiClientConfig::fromEnvironment());
 
-    AiChatResponse chat(const AiChatRequest &request) const;
+    AiChatResponse chat(const AiChatRequest &request);
+    std::string configJson() const;
 
 private:
+    std::string cacheKey(const AiChatRequest &request) const;
+    std::string makeStubReply(const std::string &message) const;
+    std::string buildChatBody(const AiChatRequest &request,
+                              const std::string &reply,
+                              bool cacheHit) const;
+
     const ToolRegistry *tools_;
+    AiClientConfig config_;
+    KamaCache::KHashLfuCache<std::string, std::string> responseCache_;
 };

@@ -14,7 +14,7 @@ The project is not meant to be just a thin chatbot wrapper. Its focus is the bac
 - macOS `poll(2)` fallback
 - async logging module
 - memory pool module
-- LFU cache module available for future response caching
+- LFU cache module connected for repeated non-tool chat messages
 - HTTP request parsing for method, path, version, headers, `Content-Length`, and body
 - JSON response helpers
 - `/health` endpoint
@@ -23,6 +23,7 @@ The project is not meant to be just a thin chatbot wrapper. Its focus is the bac
 - `ToolRegistry` for local tools
 - `/tools` endpoint for discovering local tools
 - `/chat` can call local tools through a request field
+- environment-based AI provider configuration without committing secrets
 
 Current built-in tools:
 
@@ -64,6 +65,7 @@ The current AI layer is still a stub. The useful part is the service boundary:
 /chat
   -> parse JSON message
   -> AiClient::chat()
+  -> LFU response cache for normal replies
   -> optional local tool execution
   -> structured JSON response
 ```
@@ -173,10 +175,18 @@ Health check.
 curl -i --max-time 3 http://127.0.0.1:8080/health
 ```
 
-Response:
+Example response:
 
 ```json
-{"ok":true}
+{
+  "ok": true,
+  "ai": {
+    "provider": "stub",
+    "model": "stub-local",
+    "api_key_configured": false,
+    "cache_capacity": 64
+  }
+}
 ```
 
 ### `GET /tools`
@@ -222,8 +232,17 @@ Example response:
   "ok": true,
   "message": "hello from mac",
   "reply": "Stub AI reply for: hello from mac",
+  "provider": "stub",
+  "model": "stub-local",
+  "cache_hit": false,
   "tool_used": false
 }
+```
+
+Sending the same non-tool message again should return:
+
+```json
+"cache_hit": true
 ```
 
 ### `POST /chat` With a Tool
@@ -243,6 +262,9 @@ Example response:
   "ok": true,
   "message": "show project status",
   "reply": "Tool project_status executed for: show project status",
+  "provider": "stub",
+  "model": "stub-local",
+  "cache_hit": false,
   "tool_used": true,
   "tool": "project_status",
   "tool_result": {
@@ -252,14 +274,34 @@ Example response:
 }
 ```
 
+## Configuration
+
+The gateway reads runtime configuration from environment variables:
+
+```bash
+CPP_AI_PROVIDER=stub
+CPP_AI_MODEL=stub-local
+CPP_AI_CACHE_CAPACITY=64
+```
+
+`OPENAI_API_KEY` is checked only as a boolean configuration signal for now. The current code does not call a real provider yet and does not print the key.
+
+Example:
+
+```bash
+CPP_AI_PROVIDER=openai CPP_AI_MODEL=gpt-4.1-mini OPENAI_API_KEY=... ./bin/main
+```
+
+If `CPP_AI_PROVIDER` is not `stub` and `OPENAI_API_KEY` is missing, the service logs a warning without exposing secrets.
+
 ## Current Limitations
 
 - `/chat` still returns a stub AI reply.
-- There is no real model provider integration yet.
+- There is no real model provider integration yet. Provider/model/API key configuration is wired, but the reply path is still stubbed.
 - JSON parsing is intentionally minimal and currently targets simple request bodies like `{"message":"..."}`.
 - HTTP parsing is still inside `src/main.cc` and should be split into dedicated request/response helpers.
 - Tool execution is local and manually selected by request field; there is no model-driven tool-call loop yet.
-- LFU cache exists but is not yet connected to `/chat`.
+- LFU cache is connected for repeated non-tool `/chat` messages, but cache invalidation and metrics are still basic.
 - MCP compatibility is planned but not implemented yet.
 
 ## Roadmap
@@ -267,7 +309,6 @@ Example response:
 Near-term:
 
 - Move HTTP parsing and response formatting out of `main.cc`
-- Add LFU prompt/response cache
 - Read model provider configuration from environment variables
 - Add real AI provider support with an HTTP client such as `libcurl`
 - Add request logging for method, path, status, cache hit, tool name, body size, and upstream latency

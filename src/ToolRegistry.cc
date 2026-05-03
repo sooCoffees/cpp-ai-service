@@ -95,8 +95,8 @@ ToolRegistry ToolRegistry::createDefault()
                 "{"
                 "\"project\":\"cpp-ai-service\","
                 "\"status\":\"C++ AI service gateway skeleton\","
-                "\"features\":[\"/health\",\"/chat\",\"AiClient\",\"ToolRegistry\"],"
-                "\"next\":\"LFU response cache and real model provider\""
+                "\"features\":[\"/health\",\"/chat\",\"AiClient\",\"ToolRegistry\",\"LFU response cache\",\"environment config\"],"
+                "\"next\":\"real model provider\""
                 "}";
             return ToolResult{true, json, ""};
         });

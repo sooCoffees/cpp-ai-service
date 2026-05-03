@@ -10,7 +10,6 @@
 #include <sstream>
 #include "AiClient.h"
 #include "AsyncLogging.h"
-#include "LFU.h"
 #include "ToolRegistry.h"
 #include "memoryPool.h"
 // 日志文件滚动大小为1MB (1*1024*1024 bytes)
@@ -229,7 +228,7 @@ std::string jsonResponse(const std::string &status, const std::string &body)
     return httpResponse(status, "application/json; charset=utf-8", body);
 }
 
-std::string handleChatRequest(const HttpRequest &request, const AiClient &aiClient)
+std::string handleChatRequest(const HttpRequest &request, AiClient &aiClient)
 {
     if (request.method != "POST")
     {
@@ -655,7 +654,12 @@ std::string handleToolsRequest(const HttpRequest &request, const ToolRegistry &t
     return jsonResponse("200 OK", tools.listToolsJson());
 }
 
-std::string handleRequest(const HttpRequest &request, const AiClient &aiClient, const ToolRegistry &tools)
+std::string handleHealthRequest(const AiClient &aiClient)
+{
+    return jsonResponse("200 OK", "{\"ok\":true,\"ai\":" + aiClient.configJson() + "}");
+}
+
+std::string handleRequest(const HttpRequest &request, AiClient &aiClient, const ToolRegistry &tools)
 {
     if (request.path == "/chat")
     {
@@ -667,7 +671,7 @@ std::string handleRequest(const HttpRequest &request, const AiClient &aiClient, 
     }
     if (request.path == "/health")
     {
-        return jsonResponse("200 OK", "{\"ok\":true}");
+        return handleHealthRequest(aiClient);
     }
     if (request.path == "/")
     {
@@ -677,7 +681,7 @@ std::string handleRequest(const HttpRequest &request, const AiClient &aiClient, 
     return jsonResponse("404 Not Found", jsonError("route not found"));
 }
 
-std::string handleRawRequest(const std::string &raw, const AiClient &aiClient, const ToolRegistry &tools)
+std::string handleRawRequest(const std::string &raw, AiClient &aiClient, const ToolRegistry &tools)
 {
     HttpRequest request;
     if (!parseHttpRequest(raw, &request))
@@ -697,8 +701,15 @@ public:
         : server_(loop, addr, name)
         , loop_(loop)
         , tools_(ToolRegistry::createDefault())
-        , aiClient_(&tools_)
+        , aiConfig_(AiClientConfig::fromEnvironment())
+        , aiClient_(&tools_, aiConfig_)
     {
+        if (aiConfig_.provider != "stub" && !aiConfig_.apiKeyConfigured)
+        {
+            LOG_WARN << "AI provider configured as " << aiConfig_.provider.c_str()
+                     << " but OPENAI_API_KEY is not set";
+        }
+
         // 注册回调函数
         server_.setConnectionCallback(
             std::bind(&EchoServer::onConnection, this, std::placeholders::_1));
@@ -740,6 +751,7 @@ private:
     TcpServer server_;
     EventLoop *loop_;
     ToolRegistry tools_;
+    AiClientConfig aiConfig_;
     AiClient aiClient_;
 
 };
@@ -771,9 +783,6 @@ int main(int argc,char *argv[]) {
      // 初始化内存池
     memoryPool::HashBucket::initMemoryPool();
 
-    // 初始化缓存
-    const int CAPACITY = 5;  
-    KamaCache::KLfuCache<int, std::string> lfu(CAPACITY);
     //第三步启动底层网络模块
     EventLoop loop;
     InetAddress addr(8080);

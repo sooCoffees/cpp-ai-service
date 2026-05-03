@@ -49,16 +49,17 @@ C++ Reactor WebServer
   - `GET /chat` 返回 `405`
   - 缺少 `message` 返回 `400`
   - 未知路径返回 `404`
+- `AiClient` 已经从 `main.cc` 抽出。
+- `ToolRegistry` 已经接入，包含 `project_status` 和 `server_time`。
+- `/tools` 已经可列出工具。
+- `/chat` 已经支持通过 `"tool"` 字段调用本地工具。
+- LFU response cache 已经接入普通非工具 `/chat` 回复，重复消息会返回 `cache_hit:true`。
+- `CPP_AI_PROVIDER`、`CPP_AI_MODEL`、`CPP_AI_CACHE_CAPACITY` 和 `OPENAI_API_KEY` 的配置读取已经接入。
 - `LEARNING_PLAN.md` 已更新为 AI Gateway + tools/cache/MCP 路线。
 
 还没完成：
 
-- `AiClient` 独立文件/类。
 - 真实模型 API 调用。
-- API key / model 配置。
-- `ToolRegistry`。
-- `/tools` endpoint。
-- LFU response cache 接入 `/chat`。
 - MCP-like endpoint。
 - 正式 MCP JSON-RPC 兼容。
 - HTTP 解析和响应代码从 `main.cc` 拆分。
@@ -394,11 +395,6 @@ git push origin main
 按当前计划，下一步应该做：
 
 ```text
-4/30: AiClient 边界
-5/1: ToolRegistry 和 /tools
-5/2: /chat 调本地工具
-5/3: LFU response cache
-5/4: provider/model/API key 配置
 5/5: libcurl 调真实 AI provider
 5/8: MCP-like tool endpoint
 5/9: MCP compatibility roadmap
@@ -407,10 +403,10 @@ git push origin main
 最合理的下一步代码任务：
 
 ```text
-把 /chat 里的 stub reply 移到 AiClient 类或 helper。
+接入真实 provider 调用边界，优先考虑 libcurl。
 ```
 
-目标是让 HTTP 路由不知道回复来自 stub、本地模型、远程模型还是工具调用。
+目标是在不破坏现有 `/chat`、工具调用和缓存行为的前提下，把 stub reply 替换为可配置 provider 的真实回复。
 
 ## 重要提醒
 
