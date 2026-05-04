@@ -59,12 +59,14 @@ Changes:
 - Added MCP-like tool invocation endpoint: `POST /mcp/call`.
 - Added basic MCP-like tool schemas through `ToolRegistry::listMcpToolsJson()`.
 - Extended `AiChatResponse` with cache/tool/upstream-latency metadata so routing code can log request behavior without parsing response JSON.
+- Updated README with request logging, `HttpCodec`, MCP-like endpoints, current limitations, and roadmap changes.
 
 Why:
 
 - The 5/6 plan required request logs that explain gateway behavior without exposing secrets.
 - The 5/7 plan required reducing `main.cc` responsibilities by moving HTTP codec logic into a helper module.
 - The 5/8 plan required a stable JSON shape for tool discovery and invocation before moving toward full MCP compatibility.
+- README needed to match the current implementation after the 5/6-5/8 work.
 
 Verification:
 

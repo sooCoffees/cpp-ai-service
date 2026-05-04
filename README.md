@@ -23,6 +23,9 @@ The project is not meant to be just a thin chatbot wrapper. Its focus is the bac
 - `ToolRegistry` for local tools
 - `/tools` endpoint for discovering local tools
 - `/chat` can call local tools through a request field
+- request metadata logging for method, path, status, cache hit, tool usage, body size, upstream latency, and total latency
+- `HttpCodec` helper for HTTP request parsing and response formatting
+- MCP-like tool discovery and invocation endpoints
 - environment-based AI provider configuration without committing secrets
 
 Current built-in tools:
@@ -40,7 +43,7 @@ client
   -> Acceptor
   -> TcpConnection
   -> Buffer
-  -> HTTP parser
+  -> HttpCodec
   -> route handler
   -> AiClient
   -> optional ToolRegistry
@@ -81,6 +84,7 @@ cpp-ai-service/
 ├── README.md               # project documentation
 ├── include/                # public headers
 │   ├── AiClient.h          # AI reply boundary
+│   ├── HttpCodec.h         # HTTP parsing/response helpers
 │   ├── ToolRegistry.h      # local tool registry
 │   ├── EventLoop.h         # event loop abstraction
 │   ├── Channel.h           # fd + callback wrapper
@@ -95,6 +99,7 @@ cpp-ai-service/
 ├── src/                    # server and gateway implementation
 │   ├── main.cc             # current HTTP routes and service startup
 │   ├── AiClient.cc         # chat response generation
+│   ├── HttpCodec.cc        # HTTP request parsing and response formatting
 │   ├── ToolRegistry.cc     # built-in local tools
 │   ├── EventLoop.cc        # event loop implementation
 │   ├── Channel.cc          # event dispatch implementation
@@ -276,6 +281,81 @@ Example response:
 }
 ```
 
+### `GET /mcp/tools`
+
+List local tools through a stable MCP-like discovery shape.
+
+```bash
+curl -i --max-time 3 http://127.0.0.1:8080/mcp/tools
+```
+
+Example response:
+
+```json
+{
+  "ok": true,
+  "protocol": "mcp-like",
+  "tools": [
+    {
+      "name": "project_status",
+      "description": "Return the current cpp-ai-service project status.",
+      "input_schema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
+    }
+  ]
+}
+```
+
+This endpoint is intentionally MCP-like, not full MCP JSON-RPC compatibility yet.
+
+### `POST /mcp/call`
+
+Invoke a local tool through the MCP-like endpoint.
+
+```bash
+curl -i --max-time 3 -X POST http://127.0.0.1:8080/mcp/call \
+  -H 'Content-Type: application/json' \
+  -d '{"tool":"server_time"}'
+```
+
+Example response:
+
+```json
+{
+  "ok": true,
+  "protocol": "mcp-like",
+  "tool": "server_time",
+  "result": {
+    "timestamp": "2026/05/04 01:10:05.025517"
+  }
+}
+```
+
+## Request Logging
+
+The gateway logs request metadata without dumping request bodies or API keys.
+
+Each handled request logs:
+
+- method
+- path
+- status
+- request body size
+- cache hit
+- tool usage
+- tool name
+- upstream provider latency
+- total local handling latency
+
+Example log line:
+
+```text
+request method=POST path=/chat status=200 OK body_size=29 cache_hit=true tool_used=false tool= upstream_ms=0 total_ms=0
+```
+
 ## Configuration
 
 The gateway reads runtime configuration from environment variables:
@@ -325,25 +405,24 @@ If `CPP_AI_PROVIDER` is not `stub` or `ollama` and no API key is configured, the
 
 - Real provider support currently targets OpenAI-compatible chat completion APIs.
 - JSON parsing is intentionally minimal and currently targets simple request bodies like `{"message":"..."}`.
-- HTTP parsing is still inside `src/main.cc` and should be split into dedicated request/response helpers.
+- `HttpCodec` now owns basic HTTP parsing/response formatting, but large HTML route handlers still live in `src/main.cc`.
 - Tool execution is local and manually selected by request field; there is no model-driven tool-call loop yet.
 - LFU cache is connected for repeated non-tool `/chat` messages, but cache invalidation and metrics are still basic.
-- MCP compatibility is planned but not implemented yet.
+- MCP-like JSON endpoints exist, but full MCP JSON-RPC compatibility is not implemented yet.
 
 ## Roadmap
 
 Near-term:
 
-- Move HTTP parsing and response formatting out of `main.cc`
+- Continue moving route handlers and embedded HTML out of `main.cc`
 - Add provider-specific request options for headers, organization/project IDs, and streaming
-- Add request logging for method, path, status, cache hit, tool name, body size, and upstream latency
+- Add request id tracing and richer latency metrics
 
 Later:
 
-- Add browser chat UI
 - Add model-driven tool calling
-- Add MCP-like tool discovery and execution endpoint
 - Move toward MCP JSON-RPC compatibility
+- Add RAG design, retrieval tools, and optional vector search
 
 ## Development Notes
 
