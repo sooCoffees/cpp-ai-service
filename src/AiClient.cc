@@ -3,6 +3,7 @@
 
 #include <curl/curl.h>
 
+#include <chrono>
 #include <cstdlib>
 #include <sstream>
 
@@ -260,13 +261,13 @@ AiChatResponse AiClient::chat(const AiChatRequest &request)
     {
         if (tools_ == nullptr)
         {
-            return AiChatResponse{false, "500 Internal Server Error", jsonError("tool registry is not configured")};
+            return AiChatResponse{false, "500 Internal Server Error", jsonError("tool registry is not configured"), false, false, "", 0};
         }
 
         ToolResult result = tools_->execute(request.tool);
         if (!result.ok)
         {
-            return AiChatResponse{false, "400 Bad Request", jsonError(result.error)};
+            return AiChatResponse{false, "400 Bad Request", jsonError(result.error), false, true, request.tool, 0};
         }
 
         std::ostringstream body;
@@ -281,14 +282,14 @@ AiChatResponse AiClient::chat(const AiChatRequest &request)
              << "\"tool\":\"" << jsonEscape(request.tool) << "\","
              << "\"tool_result\":" << result.json
              << "}";
-        return AiChatResponse{true, "200 OK", body.str()};
+        return AiChatResponse{true, "200 OK", body.str(), false, true, request.tool, 0};
     }
 
     const std::string key = cacheKey(request);
     std::string cachedReply;
     if (responseCache_.get(key, cachedReply))
     {
-        return AiChatResponse{true, "200 OK", buildChatBody(request, cachedReply, true)};
+        return AiChatResponse{true, "200 OK", buildChatBody(request, cachedReply, true), true, false, "", 0};
     }
 
     if (shouldUseNetworkProvider())
@@ -307,7 +308,7 @@ AiChatResponse AiClient::chat(const AiChatRequest &request)
 
     const std::string reply = makeStubReply(request.message);
     responseCache_.put(key, reply);
-    return AiChatResponse{true, "200 OK", buildChatBody(request, reply, false)};
+    return AiChatResponse{true, "200 OK", buildChatBody(request, reply, false), false, false, "", 0};
 }
 
 std::string AiClient::configJson() const
@@ -338,7 +339,7 @@ AiChatResponse AiClient::callOpenAiCompatible(const AiChatRequest &request) cons
 {
     if (config_.baseUrl.empty())
     {
-        return AiChatResponse{false, "500 Internal Server Error", jsonError("CPP_AI_BASE_URL is not configured")};
+        return AiChatResponse{false, "500 Internal Server Error", jsonError("CPP_AI_BASE_URL is not configured"), false, false, "", 0};
     }
 
     ensureCurlGlobalInit();
@@ -346,7 +347,7 @@ AiChatResponse AiClient::callOpenAiCompatible(const AiChatRequest &request) cons
     CURL *curl = curl_easy_init();
     if (curl == nullptr)
     {
-        return AiChatResponse{false, "500 Internal Server Error", jsonError("failed to initialize curl")};
+        return AiChatResponse{false, "500 Internal Server Error", jsonError("failed to initialize curl"), false, false, "", 0};
     }
 
     const std::string url = stripTrailingSlash(config_.baseUrl) + "/chat/completions";
@@ -375,7 +376,11 @@ AiChatResponse AiClient::callOpenAiCompatible(const AiChatRequest &request) cons
     curl_easy_setopt(curl, CURLOPT_TIMEOUT, static_cast<long>(config_.requestTimeoutSeconds));
     curl_easy_setopt(curl, CURLOPT_USERAGENT, "cpp-ai-service/0.1");
 
+    const auto started = std::chrono::steady_clock::now();
     const CURLcode code = curl_easy_perform(curl);
+    const auto finished = std::chrono::steady_clock::now();
+    const long upstreamLatencyMs = static_cast<long>(
+        std::chrono::duration_cast<std::chrono::milliseconds>(finished - started).count());
     long httpStatus = 0;
     curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &httpStatus);
     curl_slist_free_all(headers);
@@ -389,7 +394,7 @@ AiChatResponse AiClient::callOpenAiCompatible(const AiChatRequest &request) cons
               << "\"provider\":\"" << jsonEscape(config_.provider) << "\","
               << "\"base_url\":\"" << jsonEscape(config_.baseUrl) << "\""
               << "}";
-        return AiChatResponse{false, "502 Bad Gateway", error.str()};
+        return AiChatResponse{false, "502 Bad Gateway", error.str(), false, false, "", upstreamLatencyMs};
     }
 
     if (httpStatus < 200 || httpStatus >= 300)
@@ -400,16 +405,16 @@ AiChatResponse AiClient::callOpenAiCompatible(const AiChatRequest &request) cons
               << "\"provider\":\"" << jsonEscape(config_.provider) << "\","
               << "\"body\":\"" << jsonEscape(response) << "\""
               << "}";
-        return AiChatResponse{false, "502 Bad Gateway", error.str()};
+        return AiChatResponse{false, "502 Bad Gateway", error.str(), false, false, "", upstreamLatencyMs};
     }
 
     std::string reply;
     if (!extractJsonStringField(response, "content", &reply))
     {
-        return AiChatResponse{false, "502 Bad Gateway", jsonError("provider response did not contain assistant content")};
+        return AiChatResponse{false, "502 Bad Gateway", jsonError("provider response did not contain assistant content"), false, false, "", upstreamLatencyMs};
     }
 
-    return AiChatResponse{true, "200 OK", buildChatBody(request, reply, false)};
+    return AiChatResponse{true, "200 OK", buildChatBody(request, reply, false), false, false, "", upstreamLatencyMs};
 }
 
 bool AiClient::shouldUseNetworkProvider() const

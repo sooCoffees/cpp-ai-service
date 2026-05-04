@@ -83,6 +83,34 @@ std::string ToolRegistry::listToolsJson() const
     return body.str();
 }
 
+std::string ToolRegistry::listMcpToolsJson() const
+{
+    std::ostringstream body;
+    body << "{\"ok\":true,\"protocol\":\"mcp-like\",\"tools\":[";
+
+    bool first = true;
+    for (const auto &item : tools_)
+    {
+        if (!first)
+        {
+            body << ",";
+        }
+        first = false;
+        body << "{"
+             << "\"name\":\"" << jsonEscape(item.first) << "\","
+             << "\"description\":\"" << jsonEscape(item.second.description) << "\","
+             << "\"input_schema\":{"
+             << "\"type\":\"object\","
+             << "\"properties\":{},"
+             << "\"additionalProperties\":false"
+             << "}"
+             << "}";
+    }
+
+    body << "]}";
+    return body.str();
+}
+
 ToolRegistry ToolRegistry::createDefault()
 {
     ToolRegistry registry;

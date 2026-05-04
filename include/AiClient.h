@@ -30,6 +30,10 @@ struct AiChatResponse
     bool ok;
     std::string status;
     std::string body;
+    bool cacheHit;
+    bool toolUsed;
+    std::string toolName;
+    long upstreamLatencyMs;
 };
 
 class AiClient

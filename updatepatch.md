@@ -45,3 +45,48 @@ Notes:
 
 - Direct browser calls to third-party providers may be blocked by CORS.
 - If CORS blocks direct browser calls, use local gateway mode or add a dedicated C++ proxy endpoint.
+
+## 2026-05-04
+
+Changes:
+
+- Added request metadata logging for gateway requests.
+- Logged method, path, status, request body size, cache hit, tool usage, tool name, upstream provider latency, and total local handling latency.
+- Extracted HTTP request parsing and response formatting into `HttpCodec`.
+- Added `include/HttpCodec.h`.
+- Added `src/HttpCodec.cc`.
+- Added MCP-like tool discovery endpoint: `GET /mcp/tools`.
+- Added MCP-like tool invocation endpoint: `POST /mcp/call`.
+- Added basic MCP-like tool schemas through `ToolRegistry::listMcpToolsJson()`.
+- Extended `AiChatResponse` with cache/tool/upstream-latency metadata so routing code can log request behavior without parsing response JSON.
+
+Why:
+
+- The 5/6 plan required request logs that explain gateway behavior without exposing secrets.
+- The 5/7 plan required reducing `main.cc` responsibilities by moving HTTP codec logic into a helper module.
+- The 5/8 plan required a stable JSON shape for tool discovery and invocation before moving toward full MCP compatibility.
+
+Verification:
+
+```bash
+cmake -S . -B build
+cmake --build build -j 4
+```
+
+Verified endpoints:
+
+```bash
+curl -i --max-time 3 http://127.0.0.1:8080/health
+curl -i --max-time 3 http://127.0.0.1:8080/mcp/tools
+curl -i --max-time 3 -X POST http://127.0.0.1:8080/mcp/call \
+  -H 'Content-Type: application/json' \
+  -d '{"tool":"server_time"}'
+curl -i --max-time 3 -X POST http://127.0.0.1:8080/chat \
+  -H 'Content-Type: application/json' \
+  -d '{"message":"three day check"}'
+```
+
+Notes:
+
+- The MCP-like endpoints are custom JSON endpoints, not full MCP JSON-RPC compatibility yet.
+- `main.cc` still owns large HTML route handlers; only the HTTP codec layer was extracted in this patch.

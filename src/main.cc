@@ -5,12 +5,11 @@
 #include <sys/stat.h>
 #include <libgen.h>
 #include <signal.h>
-#include <cctype>
-#include <cstdlib>
-#include <map>
+#include <chrono>
 #include <sstream>
 #include "AiClient.h"
 #include "AsyncLogging.h"
+#include "HttpCodec.h"
 #include "ToolRegistry.h"
 #include "memoryPool.h"
 // 日志文件滚动大小为1MB (1*1024*1024 bytes)
@@ -18,228 +17,40 @@ static const off_t kRollSize = 1*1024*1024;
 
 namespace
 {
-struct HttpRequest
+struct RouteResult
 {
-    std::string method;
-    std::string path;
-    std::string version;
-    std::map<std::string, std::string> headers;
-    std::string body;
+    std::string response;
+    std::string status;
+    bool cacheHit;
+    bool toolUsed;
+    std::string toolName;
+    long upstreamLatencyMs;
 };
 
-std::string toLower(std::string value)
+RouteResult makeRouteResult(const std::string &response, const std::string &status)
 {
-    for (char &ch : value)
-    {
-        ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
-    }
-    return value;
+    RouteResult result;
+    result.response = response;
+    result.status = status;
+    result.cacheHit = false;
+    result.toolUsed = false;
+    result.upstreamLatencyMs = 0;
+    return result;
 }
 
-std::string trim(const std::string &value)
-{
-    size_t begin = 0;
-    while (begin < value.size() && std::isspace(static_cast<unsigned char>(value[begin])))
-    {
-        ++begin;
-    }
-
-    size_t end = value.size();
-    while (end > begin && std::isspace(static_cast<unsigned char>(value[end - 1])))
-    {
-        --end;
-    }
-
-    return value.substr(begin, end - begin);
-}
-
-std::string jsonEscape(const std::string &input)
-{
-    std::string output;
-    output.reserve(input.size());
-    for (char ch : input)
-    {
-        switch (ch)
-        {
-        case '\\':
-            output += "\\\\";
-            break;
-        case '"':
-            output += "\\\"";
-            break;
-        case '\n':
-            output += "\\n";
-            break;
-        case '\r':
-            output += "\\r";
-            break;
-        case '\t':
-            output += "\\t";
-            break;
-        default:
-            output += ch;
-            break;
-        }
-    }
-    return output;
-}
-
-bool parseHttpRequest(const std::string &raw, HttpRequest *request)
-{
-    const size_t requestLineEnd = raw.find("\r\n");
-    if (requestLineEnd == std::string::npos)
-    {
-        return false;
-    }
-
-    std::istringstream requestLine(raw.substr(0, requestLineEnd));
-    if (!(requestLine >> request->method >> request->path >> request->version))
-    {
-        return false;
-    }
-
-    const size_t headerEnd = raw.find("\r\n\r\n");
-    if (headerEnd == std::string::npos)
-    {
-        return false;
-    }
-
-    size_t lineStart = requestLineEnd + 2;
-    while (lineStart < headerEnd)
-    {
-        const size_t lineEnd = raw.find("\r\n", lineStart);
-        if (lineEnd == std::string::npos || lineEnd > headerEnd)
-        {
-            return false;
-        }
-
-        const std::string line = raw.substr(lineStart, lineEnd - lineStart);
-        const size_t colon = line.find(':');
-        if (colon != std::string::npos)
-        {
-            request->headers[toLower(trim(line.substr(0, colon)))] = trim(line.substr(colon + 1));
-        }
-        lineStart = lineEnd + 2;
-    }
-
-    request->body = raw.substr(headerEnd + 4);
-    auto contentLength = request->headers.find("content-length");
-    if (contentLength != request->headers.end())
-    {
-        const size_t expected = static_cast<size_t>(std::strtoul(contentLength->second.c_str(), nullptr, 10));
-        if (request->body.size() > expected)
-        {
-            request->body.resize(expected);
-        }
-    }
-
-    return true;
-}
-
-bool extractJsonStringField(const std::string &json, const std::string &field, std::string *value)
-{
-    const std::string key = "\"" + field + "\"";
-    const size_t keyPos = json.find(key);
-    if (keyPos == std::string::npos)
-    {
-        return false;
-    }
-
-    const size_t colon = json.find(':', keyPos + key.size());
-    if (colon == std::string::npos)
-    {
-        return false;
-    }
-
-    size_t pos = colon + 1;
-    while (pos < json.size() && std::isspace(static_cast<unsigned char>(json[pos])))
-    {
-        ++pos;
-    }
-
-    if (pos >= json.size() || json[pos] != '"')
-    {
-        return false;
-    }
-
-    ++pos;
-    std::string parsed;
-    while (pos < json.size())
-    {
-        char ch = json[pos++];
-        if (ch == '"')
-        {
-            *value = parsed;
-            return true;
-        }
-        if (ch == '\\' && pos < json.size())
-        {
-            char escaped = json[pos++];
-            switch (escaped)
-            {
-            case '"':
-            case '\\':
-            case '/':
-                parsed += escaped;
-                break;
-            case 'n':
-                parsed += '\n';
-                break;
-            case 'r':
-                parsed += '\r';
-                break;
-            case 't':
-                parsed += '\t';
-                break;
-            default:
-                parsed += escaped;
-                break;
-            }
-        }
-        else
-        {
-            parsed += ch;
-        }
-    }
-
-    return false;
-}
-
-std::string jsonError(const std::string &message)
-{
-    return "{\"ok\":false,\"error\":\"" + jsonEscape(message) + "\"}";
-}
-
-std::string httpResponse(const std::string &status,
-                         const std::string &contentType,
-                         const std::string &body)
-{
-    std::ostringstream oss;
-    oss << "HTTP/1.1 " << status << "\r\n"
-        << "Content-Type: " << contentType << "\r\n"
-        << "Content-Length: " << body.size() << "\r\n"
-        << "Connection: close\r\n"
-        << "\r\n"
-        << body;
-    return oss.str();
-}
-
-std::string jsonResponse(const std::string &status, const std::string &body)
-{
-    return httpResponse(status, "application/json; charset=utf-8", body);
-}
-
-std::string handleChatRequest(const HttpRequest &request, AiClient &aiClient)
+RouteResult handleChatRequest(const HttpRequest &request, AiClient &aiClient)
 {
     if (request.method != "POST")
     {
-        return jsonResponse("405 Method Not Allowed", jsonError("/chat expects POST"));
+        return makeRouteResult(jsonResponse("405 Method Not Allowed", jsonError("/chat expects POST")),
+                               "405 Method Not Allowed");
     }
 
     std::string message;
     if (!extractJsonStringField(request.body, "message", &message) || message.empty())
     {
-        return jsonResponse("400 Bad Request", jsonError("request body must contain a non-empty string field named message"));
+        return makeRouteResult(jsonResponse("400 Bad Request", jsonError("request body must contain a non-empty string field named message")),
+                               "400 Bad Request");
     }
 
     std::string tool;
@@ -250,7 +61,12 @@ std::string handleChatRequest(const HttpRequest &request, AiClient &aiClient)
     chatRequest.tool = tool;
 
     const AiChatResponse chatResponse = aiClient.chat(chatRequest);
-    return jsonResponse(chatResponse.status, chatResponse.body);
+    RouteResult result = makeRouteResult(jsonResponse(chatResponse.status, chatResponse.body), chatResponse.status);
+    result.cacheHit = chatResponse.cacheHit;
+    result.toolUsed = chatResponse.toolUsed;
+    result.toolName = chatResponse.toolName;
+    result.upstreamLatencyMs = chatResponse.upstreamLatencyMs;
+    return result;
 }
 
 std::string handleHomeRequest()
@@ -1104,22 +920,69 @@ resizeInput();
     return httpResponse("200 OK", "text/html; charset=utf-8", body);
 }
 
-std::string handleToolsRequest(const HttpRequest &request, const ToolRegistry &tools)
+RouteResult handleToolsRequest(const HttpRequest &request, const ToolRegistry &tools)
 {
     if (request.method != "GET")
     {
-        return jsonResponse("405 Method Not Allowed", jsonError("/tools expects GET"));
+        return makeRouteResult(jsonResponse("405 Method Not Allowed", jsonError("/tools expects GET")),
+                               "405 Method Not Allowed");
     }
 
-    return jsonResponse("200 OK", tools.listToolsJson());
+    return makeRouteResult(jsonResponse("200 OK", tools.listToolsJson()), "200 OK");
 }
 
-std::string handleHealthRequest(const AiClient &aiClient)
+RouteResult handleMcpToolsRequest(const HttpRequest &request, const ToolRegistry &tools)
 {
-    return jsonResponse("200 OK", "{\"ok\":true,\"ai\":" + aiClient.configJson() + "}");
+    if (request.method != "GET")
+    {
+        return makeRouteResult(jsonResponse("405 Method Not Allowed", jsonError("/mcp/tools expects GET")),
+                               "405 Method Not Allowed");
+    }
+
+    return makeRouteResult(jsonResponse("200 OK", tools.listMcpToolsJson()), "200 OK");
 }
 
-std::string handleRequest(const HttpRequest &request, AiClient &aiClient, const ToolRegistry &tools)
+RouteResult handleMcpCallRequest(const HttpRequest &request, const ToolRegistry &tools)
+{
+    if (request.method != "POST")
+    {
+        return makeRouteResult(jsonResponse("405 Method Not Allowed", jsonError("/mcp/call expects POST")),
+                               "405 Method Not Allowed");
+    }
+
+    std::string tool;
+    if (!extractJsonStringField(request.body, "tool", &tool) || tool.empty())
+    {
+        return makeRouteResult(jsonResponse("400 Bad Request", jsonError("request body must contain a non-empty string field named tool")),
+                               "400 Bad Request");
+    }
+
+    const ToolResult toolResult = tools.execute(tool);
+    if (!toolResult.ok)
+    {
+        return makeRouteResult(jsonResponse("400 Bad Request", jsonError(toolResult.error)), "400 Bad Request");
+    }
+
+    std::ostringstream body;
+    body << "{"
+         << "\"ok\":true,"
+         << "\"protocol\":\"mcp-like\","
+         << "\"tool\":\"" << jsonEscape(tool) << "\","
+         << "\"result\":" << toolResult.json
+         << "}";
+
+    RouteResult result = makeRouteResult(jsonResponse("200 OK", body.str()), "200 OK");
+    result.toolUsed = true;
+    result.toolName = tool;
+    return result;
+}
+
+RouteResult handleHealthRequest(const AiClient &aiClient)
+{
+    return makeRouteResult(jsonResponse("200 OK", "{\"ok\":true,\"ai\":" + aiClient.configJson() + "}"), "200 OK");
+}
+
+RouteResult handleRequest(const HttpRequest &request, AiClient &aiClient, const ToolRegistry &tools)
 {
     if (request.path == "/chat")
     {
@@ -1133,24 +996,42 @@ std::string handleRequest(const HttpRequest &request, AiClient &aiClient, const 
     {
         return handleHealthRequest(aiClient);
     }
+    if (request.path == "/mcp/tools")
+    {
+        return handleMcpToolsRequest(request, tools);
+    }
+    if (request.path == "/mcp/call")
+    {
+        return handleMcpCallRequest(request, tools);
+    }
     if (request.path == "/direct")
     {
-        return handleDirectApiRequest();
+        return makeRouteResult(handleDirectApiRequest(), "200 OK");
     }
     if (request.path == "/")
     {
-        return handleHomeRequest();
+        return makeRouteResult(handleHomeRequest(), "200 OK");
     }
 
-    return jsonResponse("404 Not Found", jsonError("route not found"));
+    return makeRouteResult(jsonResponse("404 Not Found", jsonError("route not found")), "404 Not Found");
 }
 
-std::string handleRawRequest(const std::string &raw, AiClient &aiClient, const ToolRegistry &tools)
+RouteResult handleRawRequest(const std::string &raw, AiClient &aiClient, const ToolRegistry &tools, HttpRequest *parsedRequest)
 {
     HttpRequest request;
     if (!parseHttpRequest(raw, &request))
     {
-        return jsonResponse("400 Bad Request", jsonError("malformed HTTP request"));
+        if (parsedRequest != nullptr)
+        {
+            *parsedRequest = request;
+        }
+        return makeRouteResult(jsonResponse("400 Bad Request", jsonError("malformed HTTP request")),
+                               "400 Bad Request");
+    }
+
+    if (parsedRequest != nullptr)
+    {
+        *parsedRequest = request;
     }
 
     return handleRequest(request, aiClient, tools);
@@ -1207,9 +1088,24 @@ private:
     void onMessage(const TcpConnectionPtr &conn, Buffer *buf, Timestamp time)
     {
         const std::string request = buf->retrieveAllAsString();
-        const std::string response = handleRawRequest(request, aiClient_, tools_);
+        HttpRequest parsedRequest;
+        const auto started = std::chrono::steady_clock::now();
+        const RouteResult routeResult = handleRawRequest(request, aiClient_, tools_, &parsedRequest);
+        const auto finished = std::chrono::steady_clock::now();
+        const long latencyMs = static_cast<long>(
+            std::chrono::duration_cast<std::chrono::milliseconds>(finished - started).count());
 
-        conn->send(response);
+        LOG_INFO << "request method=" << parsedRequest.method.c_str()
+                 << " path=" << parsedRequest.path.c_str()
+                 << " status=" << routeResult.status.c_str()
+                 << " body_size=" << parsedRequest.body.size()
+                 << " cache_hit=" << (routeResult.cacheHit ? "true" : "false")
+                 << " tool_used=" << (routeResult.toolUsed ? "true" : "false")
+                 << " tool=" << routeResult.toolName.c_str()
+                 << " upstream_ms=" << routeResult.upstreamLatencyMs
+                 << " total_ms=" << latencyMs;
+
+        conn->send(routeResult.response);
         conn->shutdown();   // 关闭写端，HTTP/1.0 风格一请求一响应
     }
     TcpServer server_;

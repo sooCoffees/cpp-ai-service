@@ -30,6 +30,7 @@ public:
     bool hasTool(const std::string &name) const;
     ToolResult execute(const std::string &name) const;
     std::string listToolsJson() const;
+    std::string listMcpToolsJson() const;
 
     static ToolRegistry createDefault();
 
