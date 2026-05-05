@@ -25,6 +25,7 @@ The project is not meant to be just a thin chatbot wrapper. Its focus is the bac
 - `/chat` can call local tools through a request field
 - request metadata logging for method, path, status, cache hit, tool usage, body size, upstream latency, and total latency
 - `HttpCodec` helper for HTTP request parsing and response formatting
+- `WebPages` helper for embedded browser pages
 - MCP-like tool discovery and invocation endpoints
 - minimal in-memory RAG store with an embedding/vector-store boundary
 - `rag_search` local retrieval tool
@@ -108,6 +109,7 @@ cpp-ai-service/
 │   ├── HttpCodec.h         # HTTP parsing/response helpers
 │   ├── RagStore.h          # RAG embedding and vector-store boundary
 │   ├── ToolRegistry.h      # local tool registry
+│   ├── WebPages.h          # browser page rendering helpers
 │   ├── EventLoop.h         # event loop abstraction
 │   ├── Channel.h           # fd + callback wrapper
 │   ├── Poller.h            # IO multiplexer interface
@@ -119,11 +121,12 @@ cpp-ai-service/
 │   ├── LFU.h               # LFU cache
 │   └── memoryPool.h        # memory pool
 ├── src/                    # server and gateway implementation
-│   ├── main.cc             # current HTTP routes and service startup
+│   ├── main.cc             # HTTP routes and service startup
 │   ├── AiClient.cc         # chat response generation
 │   ├── HttpCodec.cc        # HTTP request parsing and response formatting
 │   ├── RagStore.cc         # minimal in-memory retrieval implementation
 │   ├── ToolRegistry.cc     # built-in local tools
+│   ├── WebPages.cc         # embedded HTML/CSS/JS pages
 │   ├── EventLoop.cc        # event loop implementation
 │   ├── Channel.cc          # event dispatch implementation
 │   ├── EPollPoller.cc      # Linux epoll poller
@@ -493,7 +496,7 @@ If `CPP_AI_PROVIDER` is not `stub` or `ollama` and no API key is configured, the
 
 - Real provider support currently targets OpenAI-compatible chat completion APIs.
 - JSON parsing is intentionally minimal and currently targets simple request bodies like `{"message":"..."}`.
-- `HttpCodec` now owns basic HTTP parsing/response formatting, but large HTML route handlers still live in `src/main.cc`.
+- `HttpCodec` now owns basic HTTP parsing/response formatting, and `WebPages` owns the embedded browser pages.
 - Tool execution is local and manually selected by request field; there is no model-driven tool-call loop yet.
 - LFU cache is connected for repeated non-tool `/chat` messages, but cache invalidation and metrics are still basic.
 - MCP-like JSON endpoints exist, but full MCP JSON-RPC compatibility is not implemented yet.

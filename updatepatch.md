@@ -145,3 +145,42 @@ Notes:
 - The RAG store is process-local and resets when the server restarts.
 - The current embedding provider is keyword-based; it is a replacement boundary, not production semantic search.
 - Full MCP JSON-RPC compatibility is still future work.
+
+## 2026-05-04
+
+Changes:
+
+- Extracted embedded browser page rendering out of `src/main.cc`.
+- Added `include/WebPages.h`.
+- Added `src/WebPages.cc`.
+- Moved the main chat page HTML/CSS/JavaScript into `renderHomePage()`.
+- Moved the direct API page HTML/CSS/JavaScript into `renderDirectApiPage()`.
+- Updated `main.cc` routes so `/` and `/direct` call the WebPages helper functions.
+- Updated README project structure and current limitations to reflect the WebPages split.
+
+Why:
+
+- `main.cc` had become too large because route logic, service startup, and embedded website code lived in the same file.
+- Moving page rendering into a separate module keeps `main.cc` focused on request routing and server lifecycle.
+
+Verification:
+
+```bash
+cmake -S . -B build
+cmake --build build -j 4
+```
+
+Verified endpoints:
+
+```bash
+curl -i --max-time 3 http://127.0.0.1:8080/
+curl -i --max-time 3 http://127.0.0.1:8080/direct
+curl -i --max-time 3 -X POST http://127.0.0.1:8080/chat \
+  -H 'Content-Type: application/json' \
+  -d '{"message":"web refactor check","tool":"rag_search"}'
+```
+
+Notes:
+
+- The page behavior and routes are unchanged.
+- The embedded HTML is still compiled into the C++ binary; it is only separated from `main.cc`.
