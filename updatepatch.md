@@ -92,3 +92,56 @@ Notes:
 
 - The MCP-like endpoints are custom JSON endpoints, not full MCP JSON-RPC compatibility yet.
 - `main.cc` still owns large HTML route handlers; only the HTTP codec layer was extracted in this patch.
+
+## 2026-05-04
+
+Changes:
+
+- Added a minimal in-memory RAG implementation.
+- Added `include/RagStore.h`.
+- Added `src/RagStore.cc`.
+- Added `EmbeddingProvider`, `KeywordEmbeddingProvider`, `VectorStore`, and `InMemoryRagStore` boundaries.
+- Seeded the local RAG store with project architecture, MCP-like endpoint, and RAG planning documents.
+- Added the `rag_search` tool to `ToolRegistry`.
+- Updated tool execution so `/chat` passes the user message into the selected tool.
+- Updated `/mcp/call` so tool input can be passed through `query` or `message`.
+- Added `POST /rag/ingest` for adding or replacing temporary in-memory documents.
+- Updated `project_status` to reflect the current gateway, MCP-like endpoint, and RAG capabilities.
+- Updated README with RAG architecture, endpoint examples, MCP-like compatibility gaps, current limitations, and roadmap.
+- Updated the learning plan statuses for 5/9 through 5/13.
+
+Why:
+
+- The 5/9 plan required documenting what is MCP-like today and what is still missing for full MCP JSON-RPC compatibility.
+- The 5/10 plan required a gateway-oriented RAG design instead of a generic chatbot add-on.
+- The 5/11 plan required a runnable local retrieval tool.
+- The 5/12 plan required an embedding/vector-store boundary so keyword retrieval can later be replaced without changing `/chat`.
+- The 5/13 plan required a shareable demo path in README.
+
+Verification:
+
+```bash
+cmake -S . -B build
+cmake --build build -j 4
+```
+
+Verified endpoints:
+
+```bash
+curl -i --max-time 3 http://127.0.0.1:8080/mcp/tools
+curl -i --max-time 3 -X POST http://127.0.0.1:8080/chat \
+  -H 'Content-Type: application/json' \
+  -d '{"message":"how does MCP work here?","tool":"rag_search"}'
+curl -i --max-time 3 -X POST http://127.0.0.1:8080/rag/ingest \
+  -H 'Content-Type: application/json' \
+  -d '{"id":"supabase","title":"Supabase RAG storage","content":"Supabase Postgres with pgvector can store embeddings for future cpp-ai-service RAG retrieval."}'
+curl -i --max-time 3 -X POST http://127.0.0.1:8080/mcp/call \
+  -H 'Content-Type: application/json' \
+  -d '{"tool":"rag_search","query":"Supabase pgvector embeddings"}'
+```
+
+Notes:
+
+- The RAG store is process-local and resets when the server restarts.
+- The current embedding provider is keyword-based; it is a replacement boundary, not production semantic search.
+- Full MCP JSON-RPC compatibility is still future work.

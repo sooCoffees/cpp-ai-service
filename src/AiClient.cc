@@ -264,7 +264,7 @@ AiChatResponse AiClient::chat(const AiChatRequest &request)
             return AiChatResponse{false, "500 Internal Server Error", jsonError("tool registry is not configured"), false, false, "", 0};
         }
 
-        ToolResult result = tools_->execute(request.tool);
+        ToolResult result = tools_->execute(request.tool, request.message);
         if (!result.ok)
         {
             return AiChatResponse{false, "400 Bad Request", jsonError(result.error), false, true, request.tool, 0};

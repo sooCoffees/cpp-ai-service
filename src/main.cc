@@ -1,4 +1,5 @@
 #include <string>
+#include <memory>
 
 #include <TcpServer.h>
 #include <Logger.h>
@@ -10,6 +11,7 @@
 #include "AiClient.h"
 #include "AsyncLogging.h"
 #include "HttpCodec.h"
+#include "RagStore.h"
 #include "ToolRegistry.h"
 #include "memoryPool.h"
 // 日志文件滚动大小为1MB (1*1024*1024 bytes)
@@ -957,7 +959,13 @@ RouteResult handleMcpCallRequest(const HttpRequest &request, const ToolRegistry 
                                "400 Bad Request");
     }
 
-    const ToolResult toolResult = tools.execute(tool);
+    std::string input;
+    if (!extractJsonStringField(request.body, "query", &input))
+    {
+        extractJsonStringField(request.body, "message", &input);
+    }
+
+    const ToolResult toolResult = tools.execute(tool, input);
     if (!toolResult.ok)
     {
         return makeRouteResult(jsonResponse("400 Bad Request", jsonError(toolResult.error)), "400 Bad Request");
@@ -977,12 +985,42 @@ RouteResult handleMcpCallRequest(const HttpRequest &request, const ToolRegistry 
     return result;
 }
 
+RouteResult handleRagIngestRequest(const HttpRequest &request, InMemoryRagStore &ragStore)
+{
+    if (request.method != "POST")
+    {
+        return makeRouteResult(jsonResponse("405 Method Not Allowed", jsonError("/rag/ingest expects POST")),
+                               "405 Method Not Allowed");
+    }
+
+    std::string id;
+    std::string title;
+    std::string content;
+    if (!extractJsonStringField(request.body, "id", &id) || id.empty() ||
+        !extractJsonStringField(request.body, "title", &title) || title.empty() ||
+        !extractJsonStringField(request.body, "content", &content) || content.empty())
+    {
+        return makeRouteResult(jsonResponse("400 Bad Request", jsonError("request body must contain non-empty string fields id, title, and content")),
+                               "400 Bad Request");
+    }
+
+    ragStore.upsert(RagDocument{id, title, content});
+
+    std::ostringstream body;
+    body << "{"
+         << "\"ok\":true,"
+         << "\"id\":\"" << jsonEscape(id) << "\","
+         << "\"title\":\"" << jsonEscape(title) << "\""
+         << "}";
+    return makeRouteResult(jsonResponse("200 OK", body.str()), "200 OK");
+}
+
 RouteResult handleHealthRequest(const AiClient &aiClient)
 {
     return makeRouteResult(jsonResponse("200 OK", "{\"ok\":true,\"ai\":" + aiClient.configJson() + "}"), "200 OK");
 }
 
-RouteResult handleRequest(const HttpRequest &request, AiClient &aiClient, const ToolRegistry &tools)
+RouteResult handleRequest(const HttpRequest &request, AiClient &aiClient, const ToolRegistry &tools, InMemoryRagStore &ragStore)
 {
     if (request.path == "/chat")
     {
@@ -1004,6 +1042,10 @@ RouteResult handleRequest(const HttpRequest &request, AiClient &aiClient, const 
     {
         return handleMcpCallRequest(request, tools);
     }
+    if (request.path == "/rag/ingest")
+    {
+        return handleRagIngestRequest(request, ragStore);
+    }
     if (request.path == "/direct")
     {
         return makeRouteResult(handleDirectApiRequest(), "200 OK");
@@ -1016,7 +1058,7 @@ RouteResult handleRequest(const HttpRequest &request, AiClient &aiClient, const 
     return makeRouteResult(jsonResponse("404 Not Found", jsonError("route not found")), "404 Not Found");
 }
 
-RouteResult handleRawRequest(const std::string &raw, AiClient &aiClient, const ToolRegistry &tools, HttpRequest *parsedRequest)
+RouteResult handleRawRequest(const std::string &raw, AiClient &aiClient, const ToolRegistry &tools, InMemoryRagStore &ragStore, HttpRequest *parsedRequest)
 {
     HttpRequest request;
     if (!parseHttpRequest(raw, &request))
@@ -1034,7 +1076,7 @@ RouteResult handleRawRequest(const std::string &raw, AiClient &aiClient, const T
         *parsedRequest = request;
     }
 
-    return handleRequest(request, aiClient, tools);
+    return handleRequest(request, aiClient, tools, ragStore);
 }
 
 }
@@ -1045,10 +1087,13 @@ public:
     EchoServer(EventLoop *loop, const InetAddress &addr, const std::string &name)
         : server_(loop, addr, name)
         , loop_(loop)
-        , tools_(ToolRegistry::createDefault())
+        , ragStore_(new InMemoryRagStore())
+        , tools_(ToolRegistry::createDefault(ragStore_))
         , aiConfig_(AiClientConfig::fromEnvironment())
         , aiClient_(&tools_, aiConfig_)
     {
+        ragStore_->seedDefaults();
+
         if (aiConfig_.provider != "stub" && aiConfig_.provider != "ollama" && !aiConfig_.apiKeyConfigured)
         {
             LOG_WARN << "AI provider configured as " << aiConfig_.provider.c_str()
@@ -1090,7 +1135,7 @@ private:
         const std::string request = buf->retrieveAllAsString();
         HttpRequest parsedRequest;
         const auto started = std::chrono::steady_clock::now();
-        const RouteResult routeResult = handleRawRequest(request, aiClient_, tools_, &parsedRequest);
+        const RouteResult routeResult = handleRawRequest(request, aiClient_, tools_, *ragStore_, &parsedRequest);
         const auto finished = std::chrono::steady_clock::now();
         const long latencyMs = static_cast<long>(
             std::chrono::duration_cast<std::chrono::milliseconds>(finished - started).count());
@@ -1110,6 +1155,7 @@ private:
     }
     TcpServer server_;
     EventLoop *loop_;
+    std::shared_ptr<InMemoryRagStore> ragStore_;
     ToolRegistry tools_;
     AiClientConfig aiConfig_;
     AiClient aiClient_;

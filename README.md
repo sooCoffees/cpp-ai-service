@@ -26,12 +26,16 @@ The project is not meant to be just a thin chatbot wrapper. Its focus is the bac
 - request metadata logging for method, path, status, cache hit, tool usage, body size, upstream latency, and total latency
 - `HttpCodec` helper for HTTP request parsing and response formatting
 - MCP-like tool discovery and invocation endpoints
+- minimal in-memory RAG store with an embedding/vector-store boundary
+- `rag_search` local retrieval tool
+- `/rag/ingest` endpoint for adding temporary local documents
 - environment-based AI provider configuration without committing secrets
 
 Current built-in tools:
 
 - `project_status`
 - `server_time`
+- `rag_search`
 
 ## Architecture
 
@@ -47,6 +51,7 @@ client
   -> route handler
   -> AiClient
   -> optional ToolRegistry
+  -> optional InMemoryRagStore
   -> HTTP JSON response
 ```
 
@@ -70,10 +75,26 @@ The current AI layer is still a stub. The useful part is the service boundary:
   -> AiClient::chat()
   -> LFU response cache for normal replies
   -> optional local tool execution
+  -> optional rag_search retrieval
   -> structured JSON response
 ```
 
 This makes it easier to replace the stub with a real model provider later without rewriting the HTTP and networking layer.
+
+RAG flow:
+
+```text
+/rag/ingest
+  -> InMemoryRagStore::upsert()
+
+/chat + {"tool":"rag_search"}
+  -> AiClient
+  -> ToolRegistry
+  -> InMemoryRagStore::search()
+  -> matched context in tool_result
+```
+
+`EmbeddingProvider` and `VectorStore` are explicit boundaries. The current implementation uses a small keyword embedding provider and in-memory storage, but the `/chat` and `/mcp/call` contracts do not need to change when a real embedding API or vector database is added.
 
 ## Project Structure
 
@@ -85,6 +106,7 @@ cpp-ai-service/
 ├── include/                # public headers
 │   ├── AiClient.h          # AI reply boundary
 │   ├── HttpCodec.h         # HTTP parsing/response helpers
+│   ├── RagStore.h          # RAG embedding and vector-store boundary
 │   ├── ToolRegistry.h      # local tool registry
 │   ├── EventLoop.h         # event loop abstraction
 │   ├── Channel.h           # fd + callback wrapper
@@ -100,6 +122,7 @@ cpp-ai-service/
 │   ├── main.cc             # current HTTP routes and service startup
 │   ├── AiClient.cc         # chat response generation
 │   ├── HttpCodec.cc        # HTTP request parsing and response formatting
+│   ├── RagStore.cc         # minimal in-memory retrieval implementation
 │   ├── ToolRegistry.cc     # built-in local tools
 │   ├── EventLoop.cc        # event loop implementation
 │   ├── Channel.cc          # event dispatch implementation
@@ -276,7 +299,7 @@ Example response:
   "tool": "project_status",
   "tool_result": {
     "project": "cpp-ai-service",
-    "status": "C++ AI service gateway skeleton"
+    "status": "C++ AI service gateway with tools, cache, MCP-like endpoints, and minimal RAG"
   }
 }
 ```
@@ -311,6 +334,19 @@ Example response:
 
 This endpoint is intentionally MCP-like, not full MCP JSON-RPC compatibility yet.
 
+Current MCP-like compatibility:
+
+- tool discovery through a stable JSON response
+- tool names, descriptions, and input schemas
+- tool invocation through `POST /mcp/call`
+
+Still custom, not full MCP:
+
+- no JSON-RPC envelope such as `jsonrpc`, `id`, `method`, and `params`
+- no `initialize`, capability negotiation, or MCP session lifecycle
+- no stdio/SSE transport
+- no official MCP error object shape
+
 ### `POST /mcp/call`
 
 Invoke a local tool through the MCP-like endpoint.
@@ -330,6 +366,58 @@ Example response:
   "tool": "server_time",
   "result": {
     "timestamp": "2026/05/04 01:10:05.025517"
+  }
+}
+```
+
+Tool input can be passed as `query` or `message`:
+
+```bash
+curl -i --max-time 3 -X POST http://127.0.0.1:8080/mcp/call \
+  -H 'Content-Type: application/json' \
+  -d '{"tool":"rag_search","query":"RAG vector gateway"}'
+```
+
+### `POST /rag/ingest`
+
+Add or replace a temporary document in the in-memory RAG store.
+
+```bash
+curl -i --max-time 3 -X POST http://127.0.0.1:8080/rag/ingest \
+  -H 'Content-Type: application/json' \
+  -d '{"id":"supabase","title":"Supabase RAG storage","content":"Supabase Postgres with pgvector can store embeddings for future cpp-ai-service RAG retrieval."}'
+```
+
+The current store is process-local. Restarting the server resets it to the default seed documents.
+
+### `POST /chat` With RAG
+
+Use the local retrieval tool through the normal chat gateway:
+
+```bash
+curl -i --max-time 3 -X POST http://127.0.0.1:8080/chat \
+  -H 'Content-Type: application/json' \
+  -d '{"message":"how does MCP work here?","tool":"rag_search"}'
+```
+
+Example response shape:
+
+```json
+{
+  "ok": true,
+  "tool_used": true,
+  "tool": "rag_search",
+  "tool_result": {
+    "query": "how does MCP work here?",
+    "count": 1,
+    "matches": [
+      {
+        "id": "mcp",
+        "title": "MCP-like tool endpoint",
+        "content": "The current MCP-like endpoint supports GET /mcp/tools and POST /mcp/call...",
+        "score": 10
+      }
+    ]
   }
 }
 ```
@@ -409,6 +497,8 @@ If `CPP_AI_PROVIDER` is not `stub` or `ollama` and no API key is configured, the
 - Tool execution is local and manually selected by request field; there is no model-driven tool-call loop yet.
 - LFU cache is connected for repeated non-tool `/chat` messages, but cache invalidation and metrics are still basic.
 - MCP-like JSON endpoints exist, but full MCP JSON-RPC compatibility is not implemented yet.
+- RAG storage is in-memory and uses keyword-style embeddings. It is a boundary/demo, not a production vector database.
+- `/rag/ingest` stores whole documents for now; chunking is designed but not implemented.
 
 ## Roadmap
 
@@ -417,12 +507,15 @@ Near-term:
 - Continue moving route handlers and embedded HTML out of `main.cc`
 - Add provider-specific request options for headers, organization/project IDs, and streaming
 - Add request id tracing and richer latency metrics
+- Add document chunking before storage
+- Add persistent vector storage, with Supabase/Postgres/pgvector as a practical option
 
 Later:
 
 - Add model-driven tool calling
 - Move toward MCP JSON-RPC compatibility
-- Add RAG design, retrieval tools, and optional vector search
+- Replace keyword embeddings with a real embedding provider
+- Add a final answer flow that automatically sends retrieved context into `AiClient`
 
 ## Development Notes
 
