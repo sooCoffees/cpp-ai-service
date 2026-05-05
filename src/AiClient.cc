@@ -15,6 +15,7 @@ const char *kDeepSeekProvider = "deepseek";
 const char *kOpenRouterProvider = "openrouter";
 const char *kGroqProvider = "groq";
 const char *kOllamaProvider = "ollama";
+const char *kChatAnywhereProvider = "chatanywhere";
 
 std::string jsonEscape(const std::string &input)
 {
@@ -172,7 +173,40 @@ std::string defaultBaseUrl(const std::string &provider)
     {
         return "http://127.0.0.1:11434/v1";
     }
+    if (provider == kChatAnywhereProvider)
+    {
+        return "https://api.chatanywhere.tech/v1";
+    }
     return "https://api.openai.com/v1";
+}
+
+std::string defaultModel(const std::string &provider)
+{
+    if (provider == kDeepSeekProvider)
+    {
+        return "deepseek-chat";
+    }
+    if (provider == kOpenRouterProvider)
+    {
+        return "openrouter/free";
+    }
+    if (provider == kGroqProvider)
+    {
+        return "llama-3.1-8b-instant";
+    }
+    if (provider == kOllamaProvider)
+    {
+        return "llama3.2";
+    }
+    if (provider == kChatAnywhereProvider)
+    {
+        return "gpt-3.5-turbo";
+    }
+    if (provider == kOpenAiProvider || provider == kOpenAiCompatibleProvider)
+    {
+        return "gpt-4.1-mini";
+    }
+    return "stub-local";
 }
 
 int positiveEnvOrDefault(const char *name, int fallback)
@@ -233,13 +267,14 @@ AiClientConfig AiClientConfig::fromEnvironment()
 {
     AiClientConfig config;
     config.provider = envOrDefault("CPP_AI_PROVIDER", "stub");
-    config.model = envOrDefault("CPP_AI_MODEL", "stub-local");
+    config.model = envOrDefault("CPP_AI_MODEL", defaultModel(config.provider));
     config.baseUrl = envOrDefault("CPP_AI_BASE_URL", defaultBaseUrl(config.provider));
     config.apiKey = firstEnvValue("CPP_AI_API_KEY",
                                   "OPENAI_API_KEY",
                                   config.provider == kDeepSeekProvider ? "DEEPSEEK_API_KEY" :
                                   config.provider == kOpenRouterProvider ? "OPENROUTER_API_KEY" :
                                   config.provider == kGroqProvider ? "GROQ_API_KEY" :
+                                  config.provider == kChatAnywhereProvider ? "CHATANYWHERE_API_KEY" :
                                   nullptr,
                                   "");
     config.apiKeyConfigured = !config.apiKey.empty();
@@ -424,7 +459,8 @@ bool AiClient::shouldUseNetworkProvider() const
            config_.provider == kDeepSeekProvider ||
            config_.provider == kOpenRouterProvider ||
            config_.provider == kGroqProvider ||
-           config_.provider == kOllamaProvider;
+           config_.provider == kOllamaProvider ||
+           config_.provider == kChatAnywhereProvider;
 }
 
 std::string AiClient::buildChatBody(const AiChatRequest &request,

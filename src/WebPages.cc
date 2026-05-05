@@ -30,7 +30,7 @@ body {
   color: var(--text);
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
-button, textarea, select { font: inherit; }
+button, input, textarea, select { font: inherit; }
 .app {
   min-height: 100vh;
   display: grid;
@@ -84,7 +84,7 @@ button, textarea, select { font: inherit; }
   text-transform: uppercase;
   letter-spacing: 0;
 }
-select {
+input, select {
   width: 100%;
   min-height: 40px;
   color: var(--text);
@@ -92,6 +92,15 @@ select {
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 0 10px;
+}
+.field {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.field label {
+  color: var(--muted);
+  font-size: 12px;
 }
 .hint {
   margin: 8px 0 0;
@@ -232,6 +241,33 @@ textarea {
     <div class="brand"><div class="logo">AI</div><span>cpp-ai-service</span></div>
     <button class="new-chat" id="newChat">New chat</button>
     <div class="side-block">
+      <p class="side-label">Provider</p>
+      <div class="field">
+        <label for="preset">Preset</label>
+        <select id="preset">
+          <option value="https://api.chatanywhere.tech/v1|gpt-3.5-turbo">ChatAnywhere Demo</option>
+          <option value="https://api.openai.com/v1|gpt-4.1-mini">OpenAI</option>
+          <option value="https://api.deepseek.com/v1|deepseek-chat">DeepSeek</option>
+          <option value="https://openrouter.ai/api/v1|openrouter/free">OpenRouter Free</option>
+          <option value="https://api.groq.com/openai/v1|llama-3.1-8b-instant">Groq</option>
+          <option value="custom|">Custom</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="baseUrl">Base URL</label>
+        <input id="baseUrl" spellcheck="false" value="https://api.chatanywhere.tech/v1">
+      </div>
+      <div class="field">
+        <label for="model">Model</label>
+        <input id="model" spellcheck="false" value="gpt-3.5-turbo">
+      </div>
+      <div class="field">
+        <label for="apiKey">API Key</label>
+        <input id="apiKey" type="password" spellcheck="false" placeholder="sk-...">
+      </div>
+      <p class="hint">No tool selected: browser calls this API directly. Select a local tool to use the C++ gateway.</p>
+    </div>
+    <div class="side-block">
       <p class="side-label">Tool</p>
       <select id="toolSelect">
         <option value="">No tool</option>
@@ -240,7 +276,7 @@ textarea {
     </div>
     <div class="side-block">
       <p class="side-label">Gateway</p>
-      <p class="hint">This UI posts to /chat. The current backend still returns a stub AI reply unless a local tool is selected.</p>
+      <p class="hint">Local tools are served by /chat through the C++ gateway. Direct API mode is only for demos because the key is visible in the browser.</p>
     </div>
   </aside>
   <main class="main">
@@ -267,6 +303,11 @@ const sendButton = document.getElementById('sendButton');
 const statusEl = document.getElementById('status');
 const toolSelect = document.getElementById('toolSelect');
 const newChat = document.getElementById('newChat');
+const preset = document.getElementById('preset');
+const baseUrl = document.getElementById('baseUrl');
+const model = document.getElementById('model');
+const apiKey = document.getElementById('apiKey');
+const history = [];
 
 function setStatus(text, state) {
   statusEl.textContent = text;
@@ -291,7 +332,8 @@ function addMessage(role, text) {
 
 function resetChat() {
   messages.innerHTML = '';
-  addMessage('assistant', 'Hi, I am cpp-ai-service. Send a message to test the C++ /chat gateway, or select a local tool from the sidebar.');
+  history.length = 0;
+  addMessage('assistant', 'Hi, I am cpp-ai-service. Fill an API key to chat through the selected provider, or select a local tool from the sidebar.');
   input.focus();
 }
 
@@ -327,7 +369,65 @@ async function loadTools() {
   }
 }
 
+function saveProviderConfig() {
+  localStorage.setItem('homeApi.baseUrl', baseUrl.value.trim());
+  localStorage.setItem('homeApi.model', model.value.trim());
+}
+
+function loadProviderConfig() {
+  baseUrl.value = localStorage.getItem('homeApi.baseUrl') || baseUrl.value;
+  model.value = localStorage.getItem('homeApi.model') || model.value;
+}
+
+function providerUrl() {
+  return baseUrl.value.trim().replace(/\/+$/, '') + '/chat/completions';
+}
+
+async function sendDirect(text) {
+  const key = apiKey.value.trim();
+  if (!key) {
+    throw new Error('API key is required for direct provider chat');
+  }
+
+  const messagesForApi = history.concat([{ role: 'user', content: text }]);
+  const res = await fetch(providerUrl(), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer ' + key
+    },
+    body: JSON.stringify({
+      model: model.value.trim(),
+      messages: messagesForApi,
+      temperature: 0.2
+    })
+  });
+
+  const raw = await res.text();
+  let data;
+  try {
+    data = JSON.parse(raw);
+  } catch (err) {
+    throw new Error('Provider returned non-JSON response: ' + raw.slice(0, 180));
+  }
+
+  if (!res.ok) {
+    throw new Error((data.error && (data.error.message || data.error)) || ('HTTP ' + res.status));
+  }
+
+  const reply = data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
+  if (!reply) throw new Error('No assistant message in provider response');
+  history.push({ role: 'user', content: text });
+  history.push({ role: 'assistant', content: reply });
+  return reply;
+}
+
 async function sendMessage(text) {
+  saveProviderConfig();
+  if (!toolSelect.value) {
+    return sendDirect(text);
+  }
+
   const payload = { message: text };
   if (toolSelect.value) payload.tool = toolSelect.value;
 
@@ -348,6 +448,15 @@ async function sendMessage(text) {
   return reply || '(empty response)';
 }
 
+preset.addEventListener('change', () => {
+  const value = preset.value;
+  if (value === 'custom|') return;
+  const parts = value.split('|');
+  baseUrl.value = parts[0] || baseUrl.value;
+  model.value = parts[1] || model.value;
+  saveProviderConfig();
+});
+
 form.addEventListener('submit', async (event) => {
   event.preventDefault();
   const text = input.value.trim();
@@ -358,14 +467,14 @@ form.addEventListener('submit', async (event) => {
   resizeInput();
   input.disabled = true;
   sendButton.disabled = true;
-  setStatus('Thinking...');
+  setStatus(toolSelect.value ? 'Calling local gateway...' : 'Calling provider...');
   const pending = addMessage('assistant', '...');
 
   try {
     pending.textContent = await sendMessage(text);
-    setStatus('Service online', 'ok');
+    setStatus(toolSelect.value ? 'Local gateway mode' : 'Direct API mode', 'ok');
   } catch (err) {
-    pending.textContent = 'Request failed: ' + err.message;
+    pending.textContent = 'Request failed: ' + err.message + '\n\nIf browser direct mode is blocked by CORS, select a local tool or run the service with provider env vars.';
     setStatus('Request failed', 'error');
   } finally {
     input.disabled = false;
@@ -385,6 +494,7 @@ newChat.addEventListener('click', resetChat);
 
 resetChat();
 resizeInput();
+loadProviderConfig();
 loadHealth();
 loadTools();
 </script>
@@ -400,7 +510,7 @@ std::string renderDirectApiPage()
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Direct API Chat</title>
+<title>API Playground</title>
 <style>
 :root {
   color-scheme: dark;
@@ -603,14 +713,15 @@ button:disabled {
 <body>
 <div class="app">
   <aside class="settings">
-    <div class="brand"><div class="logo">API</div><span>Direct API Chat</span></div>
-    <p class="hint">This page can call an OpenAI-compatible API directly from the browser. Some providers block browser calls with CORS; in that case use the local gateway button.</p>
+    <div class="brand"><div class="logo">API</div><span>API Playground</span></div>
+    <p class="hint">Use ChatAnywhere as the demo provider, or choose Custom and bring your own OpenAI-compatible Base URL, Model, and API Key.</p>
 
     <label>Preset
       <select id="preset">
+        <option value="https://api.chatanywhere.tech/v1|gpt-3.5-turbo">ChatAnywhere Demo</option>
         <option value="https://api.openai.com/v1|gpt-4.1-mini">OpenAI</option>
         <option value="https://api.deepseek.com/v1|deepseek-chat">DeepSeek</option>
-        <option value="https://openrouter.ai/api/v1|openai/gpt-4.1-mini">OpenRouter</option>
+        <option value="https://openrouter.ai/api/v1|openrouter/free">OpenRouter Free</option>
         <option value="https://api.groq.com/openai/v1|llama-3.1-8b-instant">Groq</option>
         <option value="http://127.0.0.1:11434/v1|llama3.2">Ollama local</option>
         <option value="custom|">Custom</option>
@@ -618,11 +729,11 @@ button:disabled {
     </label>
 
     <label>Base URL
-      <input id="baseUrl" spellcheck="false" value="https://api.openai.com/v1">
+      <input id="baseUrl" spellcheck="false" value="https://api.chatanywhere.tech/v1">
     </label>
 
     <label>Model
-      <input id="model" spellcheck="false" value="gpt-4.1-mini">
+      <input id="model" spellcheck="false" value="gpt-3.5-turbo">
     </label>
 
     <label>API Key
@@ -641,20 +752,20 @@ button:disabled {
     <button class="secondary" id="saveSettings" type="button">Save settings</button>
     <button class="secondary" id="gatewayMode" type="button">Send through local gateway</button>
     <button class="secondary" id="newChat" type="button">New chat</button>
-    <p class="hint">Direct browser mode exposes your key to this page and browser devtools. Do not use keys you cannot rotate.</p>
+    <p class="hint">Browser mode is for demos. For real usage, keep keys server-side and use local gateway mode.</p>
   </aside>
 
   <main class="main">
     <header class="topbar">
       <div class="title">
         <strong>Chat</strong>
-        <span class="status" id="status">Direct browser mode</span>
+        <span class="status" id="status">Demo browser mode</span>
       </div>
     </header>
     <section class="messages" id="messages"></section>
     <form class="composer" id="chatForm">
       <div class="composer-inner">
-        <textarea id="messageInput" rows="1" placeholder="Message direct API"></textarea>
+        <textarea id="messageInput" rows="1" placeholder="Message API playground"></textarea>
         <button class="send" id="sendButton" type="submit" title="Send">↑</button>
       </div>
     </form>
@@ -717,7 +828,7 @@ function loadConfig() {
 function resetChat() {
   messages.innerHTML = '';
   history.length = 0;
-  addMessage('assistant', 'Fill Base URL, Model, and API Key on the left. This page can call /chat/completions directly from the browser.');
+  addMessage('assistant', 'Use ChatAnywhere as the demo provider, or select Custom and enter your own OpenAI-compatible API settings.');
   input.focus();
 }
 
@@ -851,4 +962,3 @@ resizeInput();
 </html>)HTML";
     return httpResponse("200 OK", "text/html; charset=utf-8", body);
 }
-

@@ -184,3 +184,111 @@ Notes:
 
 - The page behavior and routes are unchanged.
 - The embedded HTML is still compiled into the C++ binary; it is only separated from `main.cc`.
+
+## 2026-05-05
+
+Changes:
+
+- Added provider-specific default model selection in `AiClientConfig`.
+- Set the default OpenRouter model to `openrouter/free`.
+- Updated the Direct API page OpenRouter preset to `OpenRouter Free`.
+- Updated README with a quick OpenRouter free-model startup command.
+
+Why:
+
+- The fastest practical way to make the main chat page use a real low-cost/free model is OpenRouter's OpenAI-compatible free model router.
+- The user should not need to remember a model id just to test the gateway with OpenRouter.
+
+Verification:
+
+```bash
+cmake --build build -j 4
+```
+
+Notes:
+
+- OpenRouter still requires an API key.
+- The default provider remains `stub`; real model calls start only when `CPP_AI_PROVIDER` is set.
+
+## 2026-05-05
+
+Changes:
+
+- Added `chatanywhere` as an OpenAI-compatible provider shortcut.
+- Added default ChatAnywhere base URL: `https://api.chatanywhere.tech/v1`.
+- Added default ChatAnywhere model: `gpt-3.5-turbo`.
+- Added provider-specific key lookup through `CHATANYWHERE_API_KEY`.
+- Added a ChatAnywhere Free preset to the Direct API page.
+- Updated README with ChatAnywhere startup commands.
+
+Why:
+
+- ChatAnywhere provides an OpenAI-compatible free/low-cost API proxy, so it can be integrated through the existing gateway path without a new provider adapter.
+- The main chat page can use this provider by setting environment variables before starting `./bin/main`.
+
+Verification:
+
+```bash
+cmake --build build -j 4
+```
+
+Notes:
+
+- ChatAnywhere still requires a user-owned API key.
+- The provider is treated as OpenAI-compatible and calls `/chat/completions`.
+
+## 2026-05-05
+
+Changes:
+
+- Repositioned `/direct` as an API playground for demos and bring-your-own-API testing.
+- Changed the Direct API page title and brand text to `API Playground`.
+- Made ChatAnywhere Demo the first/default preset on `/direct`.
+- Updated default Base URL to `https://api.chatanywhere.tech/v1`.
+- Updated default model to `gpt-3.5-turbo`.
+- Updated page copy to explain that users can select Custom and enter their own OpenAI-compatible API settings.
+- Updated README with the demo/API playground positioning.
+
+Why:
+
+- ChatAnywhere should be treated as a demo provider, while the UI should also let users test their own OpenAI-compatible APIs.
+- Browser direct calls are useful for demos, but production usage should keep keys server-side through the local gateway.
+
+Verification:
+
+```bash
+cmake --build build -j 4
+```
+
+Notes:
+
+- `/direct` behavior is still client-side OpenAI-compatible API testing.
+- The main chat page still uses the provider selected by server environment variables.
+
+## 2026-05-05
+
+Changes:
+
+- Added provider settings directly to the main `/` chat page.
+- Added ChatAnywhere Demo, OpenAI, DeepSeek, OpenRouter Free, Groq, and Custom presets to the main page.
+- Added Base URL, Model, and API Key inputs to the main page sidebar.
+- Changed main page send behavior:
+  - no local tool selected: call the configured OpenAI-compatible API directly from the browser
+  - local tool selected: call the C++ gateway `/chat` endpoint
+- Updated README to describe the main page's direct provider mode and local tool mode.
+
+Why:
+
+- The main page should be usable immediately from `http://127.0.0.1:8080/`.
+- Users should not need to open `/direct` just to enter their own API configuration.
+
+Verification:
+
+```bash
+cmake --build build -j 4
+```
+
+Notes:
+
+- Direct provider mode exposes the API key to the browser and should be treated as demo mode.
+- Local tools still go through the C++ gateway.

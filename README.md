@@ -192,7 +192,12 @@ kill <PID>
 
 ### `GET /`
 
-Simple browser page for confirming that the server is running.
+Main browser chat page.
+
+The page can be used in two modes:
+
+- direct provider mode: fill Base URL, Model, and API Key on the page, then chat through an OpenAI-compatible API such as ChatAnywhere
+- local tool mode: select a local tool and the page calls `/chat` through the C++ gateway
 
 ```bash
 curl -i --max-time 3 http://127.0.0.1:8080/
@@ -460,7 +465,7 @@ CPP_AI_CACHE_CAPACITY=64
 CPP_AI_TIMEOUT_SECONDS=20
 ```
 
-`CPP_AI_API_KEY` is the generic API key variable. The service also checks common provider variables such as `OPENAI_API_KEY`, `DEEPSEEK_API_KEY`, `OPENROUTER_API_KEY`, and `GROQ_API_KEY`. API keys are never printed in `/health`; only `api_key_configured` is exposed.
+`CPP_AI_API_KEY` is the generic API key variable. The service also checks common provider variables such as `OPENAI_API_KEY`, `DEEPSEEK_API_KEY`, `OPENROUTER_API_KEY`, `GROQ_API_KEY`, and `CHATANYWHERE_API_KEY`. API keys are never printed in `/health`; only `api_key_configured` is exposed.
 
 Stub mode:
 
@@ -483,10 +488,34 @@ Provider shortcuts:
 ```bash
 CPP_AI_PROVIDER=openai CPP_AI_MODEL=gpt-4.1-mini OPENAI_API_KEY=... ./bin/main
 CPP_AI_PROVIDER=deepseek CPP_AI_MODEL=deepseek-chat DEEPSEEK_API_KEY=... ./bin/main
-CPP_AI_PROVIDER=openrouter CPP_AI_MODEL=openai/gpt-4.1-mini OPENROUTER_API_KEY=... ./bin/main
+CPP_AI_PROVIDER=openrouter CPP_AI_MODEL=openrouter/free OPENROUTER_API_KEY=... ./bin/main
 CPP_AI_PROVIDER=groq CPP_AI_MODEL=llama-3.1-8b-instant GROQ_API_KEY=... ./bin/main
 CPP_AI_PROVIDER=ollama CPP_AI_MODEL=llama3.2 ./bin/main
+CPP_AI_PROVIDER=chatanywhere CPP_AI_MODEL=gpt-3.5-turbo CHATANYWHERE_API_KEY=... ./bin/main
 ```
+
+Quick free-model test with OpenRouter:
+
+```bash
+CPP_AI_PROVIDER=openrouter OPENROUTER_API_KEY=... ./bin/main
+```
+
+When `CPP_AI_MODEL` is omitted, `openrouter` defaults to `openrouter/free`.
+
+Quick free-model test with ChatAnywhere:
+
+```bash
+CPP_AI_PROVIDER=chatanywhere CHATANYWHERE_API_KEY=... ./bin/main
+```
+
+When `CPP_AI_MODEL` is omitted, `chatanywhere` defaults to `gpt-3.5-turbo` and `CPP_AI_BASE_URL` defaults to `https://api.chatanywhere.tech/v1`.
+
+Demo/API playground:
+
+- `/direct` defaults to ChatAnywhere Demo.
+- Select `Custom` to test your own OpenAI-compatible API by entering Base URL, Model, and API Key.
+- Browser direct calls are only for demos because the key is visible to the page and browser tools.
+- For real usage, start `./bin/main` with provider environment variables and use the local gateway path.
 
 Supported network providers use an OpenAI-compatible `POST /chat/completions` API. Set `CPP_AI_BASE_URL` to point at any compatible host, including local services like LM Studio or Ollama.
 
