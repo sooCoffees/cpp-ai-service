@@ -379,7 +379,7 @@ Changes:
 - Stored the demo session token in browser `localStorage` for local testing.
 - Restored signed-in state on page load through `GET /auth/me`.
 - Added `REGISTRATION_SYSTEM_RISKS.md`.
-- Updated `extension.md` with future user ownership and agent access-control notes.
+- Prepared future user ownership and agent access-control notes for local planning.
 - Updated README with auth endpoints, auth UI behavior, configuration, limitations, and future extension direction.
 
 Why:
@@ -420,6 +420,38 @@ Notes:
 - Sessions are currently process-local.
 - `data/users.jsonl` is local runtime data and must not be committed.
 - `/chat` is still guest-accessible by design.
+
+GitHub upload:
+
+- Already uploaded to GitHub: No, pending this upload.
+
+## 2026-05-06
+
+Changes:
+
+- Removed local-only planning files from Git tracking.
+- Added `AGENTS.md` and `extension.md` to `.gitignore`.
+- Kept `AGENTS.md` and `extension.md` as local-only workspace files.
+- Left production code and public README auth documentation unchanged.
+
+Why:
+
+- Repository rules and extension planning should stay local unless the user explicitly asks to upload them.
+- `AGENTS.md` should be used for local assistant rules.
+- `extension.md` should not be published as project documentation.
+
+Verification:
+
+```bash
+cmake --build build -j 4
+git status --short --branch
+git diff --cached --name-only
+```
+
+Notes:
+
+- `AGENTS.md` and `extension.md` remain available in the local workspace.
+- They are intentionally not part of future GitHub uploads.
 
 GitHub upload:
 
