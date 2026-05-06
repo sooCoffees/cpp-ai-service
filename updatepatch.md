@@ -292,3 +292,45 @@ Notes:
 
 - Direct provider mode exposes the API key to the browser and should be treated as demo mode.
 - Local tools still go through the C++ gateway.
+
+## 2026-05-06
+
+Changes:
+
+- Redesigned the main `/` page into a QClaw-style agent workspace.
+- Added a compact left rail, agent sidebar, top mode chips, welcome hero, and bottom composer.
+- Removed the previous five quick-action cards for a cleaner workspace.
+- Changed the main page copy to English-only.
+- Kept MCP/tool selection in the bottom composer instead of duplicating it in the sidebar.
+- Added client-side agent creation through `+ New Agent`.
+- Added client-side agent deletion with a small delete control on each agent card.
+- Made the Provider settings panel appear as a child panel under the selected agent.
+- Kept existing `/health`, `/tools`, direct provider mode, and local `/chat` tool mode behavior.
+
+Why:
+
+- The main browser page needed to look closer to the requested desktop agent workspace instead of a plain chat page.
+- The agent UI should preview the future multi-agent direction before the backend `/agents` API exists.
+- Provider settings are easier to understand when they belong visually to the selected agent.
+- Tool selection should stay near the message composer because it affects how the next message is sent.
+- The UI should stay focused on the current browser workspace while future extension planning remains local for now.
+
+Verification:
+
+```bash
+cmake --build build -j 4
+curl -i --max-time 3 http://127.0.0.1:8080/health
+curl -i --max-time 3 http://127.0.0.1:8080/tools
+curl -i --max-time 3 http://127.0.0.1:8080/
+```
+
+Browser verification:
+
+- Opened `http://127.0.0.1:8080/` in the in-app browser.
+- Verified that `+ New Agent` creates and selects a new agent card.
+- Verified that agent deletion removes the selected generated agent.
+- Verified that the Provider panel is hidden initially and appears under the selected agent card.
+
+GitHub upload:
+
+- Already uploaded to GitHub: No, pending this upload.

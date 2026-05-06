@@ -8,25 +8,34 @@ std::string renderHomePage()
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>cpp-ai-service</title>
+<title>QClaw Agent Workspace</title>
 <style>
 :root {
   color-scheme: dark;
-  --bg: #111312;
-  --panel: #181b1a;
-  --panel-2: #202422;
-  --border: #303633;
-  --text: #f3f5f2;
-  --muted: #9aa39d;
-  --accent: #19c37d;
+  --bg: #171a16;
+  --rail: #101410;
+  --sidebar: #292d25;
+  --sidebar-2: #353a31;
+  --surface: #20241f;
+  --surface-2: #2a3028;
+  --field: #3b4038;
+  --line: rgba(255, 255, 255, 0.12);
+  --text: #f7f6ee;
+  --muted: #c2c8bd;
+  --dim: #899085;
+  --accent: #19b6ff;
+  --accent-2: #23d18b;
   --danger: #ff6b6b;
-  --shadow: 0 18px 60px rgba(0, 0, 0, 0.28);
+  --shadow: 0 18px 80px rgba(0, 0, 0, 0.38);
 }
 * { box-sizing: border-box; }
 html, body { height: 100%; }
 body {
   margin: 0;
-  background: var(--bg);
+  background:
+    linear-gradient(135deg, rgba(57, 78, 65, 0.18), transparent 42%),
+    radial-gradient(circle at 90% 0%, rgba(54, 139, 160, 0.16), transparent 34%),
+    var(--bg);
   color: var(--text);
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
@@ -34,113 +43,288 @@ button, input, textarea, select { font: inherit; }
 .app {
   min-height: 100vh;
   display: grid;
-  grid-template-columns: 280px minmax(0, 1fr);
+  grid-template-columns: 48px 236px minmax(0, 1fr);
 }
-.sidebar {
-  border-right: 1px solid var(--border);
-  background: #151716;
-  padding: 18px 14px;
+.rail {
+  background: rgba(15, 18, 15, 0.82);
+  border-right: 1px solid var(--line);
+  padding: 18px 7px;
   display: flex;
   flex-direction: column;
+  align-items: center;
   gap: 18px;
 }
-.brand {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 4px 6px;
-  font-weight: 700;
+.profile {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(135deg, #ff7b3f, #ffe18b);
+  color: #24120a;
+  font-weight: 900;
+  font-size: 13px;
 }
-.logo {
+.rail-nav {
+  display: grid;
+  gap: 13px;
+  width: 100%;
+}
+.rail-btn {
   width: 34px;
-  height: 34px;
+  height: 38px;
+  border: 0;
   border-radius: 8px;
   display: grid;
   place-items: center;
-  background: var(--accent);
-  color: #07110c;
-  font-weight: 900;
-}
-.new-chat, .send {
-  border: 0;
+  gap: 2px;
+  background: transparent;
+  color: var(--muted);
   cursor: pointer;
-  border-radius: 8px;
-  background: var(--text);
-  color: #101211;
-  font-weight: 700;
+  font-size: 12px;
+}
+.rail-btn span {
+  font-size: 10px;
+  line-height: 1;
+}
+.rail-btn.active {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text);
+}
+.sidebar {
+  border-right: 1px solid var(--line);
+  background: rgba(42, 47, 39, 0.88);
+  padding: 16px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+.search {
+  position: relative;
+}
+.search input {
+  min-height: 34px;
+  border-radius: 999px;
+  padding-left: 38px;
+  background: rgba(255, 255, 255, 0.13);
+  border: 1px solid rgba(255, 255, 255, 0.11);
+}
+.search::before {
+  content: "⌕";
+  position: absolute;
+  left: 14px;
+  top: 6px;
+  color: var(--muted);
+  font-weight: 800;
+}
+.new-chat, .send, .chip, .agent-card {
+  cursor: pointer;
 }
 .new-chat {
   width: 100%;
-  min-height: 42px;
+  min-height: 36px;
+  border: 0;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.15);
+  color: var(--text);
+  font-weight: 700;
 }
-.side-block {
-  border-top: 1px solid var(--border);
-  padding-top: 16px;
+.agent-card {
+  min-height: 54px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.16);
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) 24px;
+  gap: 10px;
+  align-items: center;
+  padding: 8px;
+  color: var(--text);
+  text-align: left;
 }
-.side-label {
-  margin: 0 0 8px;
+.agent-card.active {
+  border-color: rgba(25, 182, 255, 0.55);
+  background: rgba(255, 255, 255, 0.2);
+}
+.agent-avatar {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(135deg, #e83f4f, #fff8ce 58%, #2fd8ff);
+  color: #141713;
+  font-weight: 900;
+}
+.agent-name {
+  font-weight: 800;
+  font-size: 13px;
+}
+.agent-desc {
+  margin-top: 2px;
   color: var(--muted);
   font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.agent-list {
+  display: grid;
+  gap: 8px;
+}
+.agent-item {
+  display: grid;
+  gap: 8px;
+}
+.delete-agent {
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 900;
+}
+.delete-agent:hover {
+  background: rgba(255, 107, 107, 0.18);
+  color: #ffb8b8;
 }
 input, select {
   width: 100%;
-  min-height: 40px;
+  min-height: 36px;
   color: var(--text);
-  background: var(--panel-2);
-  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 8px;
   padding: 0 10px;
 }
 .field {
   display: grid;
   gap: 6px;
-  margin-bottom: 10px;
+  margin-bottom: 8px;
 }
 .field label {
   color: var(--muted);
   font-size: 12px;
 }
+.side-panel {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 10px;
+  margin-left: 48px;
+  background: rgba(255, 255, 255, 0.07);
+}
+.side-panel.hidden {
+  display: none;
+}
+.side-panel details {
+  border-radius: 8px;
+}
+.side-panel summary {
+  cursor: pointer;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 800;
+}
 .hint {
   margin: 8px 0 0;
   color: var(--muted);
-  font-size: 13px;
+  font-size: 12px;
   line-height: 1.45;
 }
 .main {
   min-width: 0;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-rows: 54px minmax(0, 1fr) auto;
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.025), transparent 22%),
+    rgba(26, 29, 25, 0.86);
 }
 .topbar {
-  min-height: 60px;
-  border-bottom: 1px solid var(--border);
+  min-height: 54px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 0 22px;
+  padding: 0 18px;
 }
-.title {
+.tabs {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  align-items: center;
+  gap: 8px;
 }
-.title strong { font-size: 15px; }
+.chip {
+  min-width: 74px;
+  min-height: 26px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.14);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 800;
+}
+.chip.active {
+  background: linear-gradient(135deg, #19b6ff, #087bff);
+  box-shadow: 0 6px 22px rgba(25, 182, 255, 0.26);
+}
 .status {
   color: var(--muted);
-  font-size: 13px;
+  font-size: 12px;
 }
 .status.ok { color: var(--accent); }
 .status.error { color: var(--danger); }
-.messages {
+.workspace {
+  min-height: 0;
   overflow-y: auto;
-  padding: 28px 18px;
+  padding: 54px 18px 26px;
+}
+.hero {
+  width: min(920px, 100%);
+  margin: 96px auto 42px;
+  text-align: center;
+}
+.hero h1 {
+  margin: 0 0 8px;
+  font-size: clamp(26px, 4vw, 36px);
+  line-height: 1.15;
+  letter-spacing: 0;
+}
+.hero h1 .mark {
+  display: inline-block;
+  position: relative;
+}
+.hero h1 .mark::after {
+  content: "";
+  position: absolute;
+  left: 3px;
+  right: 3px;
+  bottom: 1px;
+  height: 7px;
+  border-radius: 999px;
+  background: rgba(255, 69, 94, 0.78);
+  z-index: -1;
+}
+.hero p {
+  margin: 0;
+  color: var(--text);
+  font-weight: 800;
+  font-size: 16px;
+}
+.conversation {
+  width: min(920px, 100%);
+  margin: 0 auto;
+}
+.messages {
+  min-height: 0;
+  margin-bottom: 18px;
 }
 .message {
-  width: min(860px, 100%);
-  margin: 0 auto 18px;
+  margin: 0 0 14px;
   display: grid;
   grid-template-columns: 36px minmax(0, 1fr);
   gap: 14px;
@@ -151,13 +335,13 @@ input, select {
   border-radius: 8px;
   display: grid;
   place-items: center;
-  background: var(--panel-2);
+  background: var(--surface-2);
   color: var(--muted);
   font-size: 13px;
   font-weight: 800;
 }
 .assistant .avatar {
-  background: rgba(25, 195, 125, 0.18);
+  background: rgba(25, 182, 255, 0.18);
   color: var(--accent);
 }
 .bubble {
@@ -168,28 +352,27 @@ input, select {
   overflow-wrap: anywhere;
 }
 .assistant .bubble {
-  background: var(--panel);
-  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 8px;
   padding: 14px 16px;
   box-shadow: var(--shadow);
 }
 .composer {
-  border-top: 1px solid var(--border);
-  padding: 16px 18px 22px;
-  background: rgba(17, 19, 18, 0.92);
+  padding: 0 18px 24px;
+  background: linear-gradient(180deg, transparent, rgba(23, 26, 22, 0.76));
 }
 .composer-inner {
-  width: min(860px, 100%);
+  width: min(920px, 100%);
   margin: 0 auto;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 48px;
-  gap: 10px;
-  align-items: end;
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 10px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 18px;
+  padding: 13px 14px 11px;
+  box-shadow: 0 18px 80px rgba(0, 0, 0, 0.32);
 }
 textarea {
   width: 100%;
@@ -201,113 +384,185 @@ textarea {
   color: var(--text);
   background: transparent;
   line-height: 1.5;
-  padding: 11px 8px;
+  padding: 4px 2px 0;
+}
+.composer-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.mode-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.mini-select {
+  width: auto;
+  min-width: 88px;
+  min-height: 28px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 800;
+  background: rgba(255, 255, 255, 0.09);
 }
 .send {
-  width: 48px;
-  height: 48px;
+  border: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
   display: grid;
   place-items: center;
-  font-size: 20px;
+  background: rgba(255, 255, 255, 0.84);
+  color: #22251f;
+  font-size: 17px;
+  font-weight: 900;
 }
 .send:disabled {
   cursor: not-allowed;
   opacity: 0.45;
 }
 @media (max-width: 760px) {
-  .app { grid-template-columns: 1fr; }
+  .app { grid-template-columns: 44px minmax(0, 1fr); }
   .sidebar {
-    border-right: 0;
-    border-bottom: 1px solid var(--border);
-    padding: 12px;
+    display: none;
   }
-  .side-block { display: none; }
-  .topbar { padding: 0 14px; }
-  .messages { padding: 20px 14px; }
-  .message {
-    grid-template-columns: 32px minmax(0, 1fr);
-    gap: 10px;
+}
+@media (max-width: 640px) {
+  .app { grid-template-columns: 1fr; }
+  .rail { display: none; }
+  .topbar {
+    padding: 10px 12px;
+    min-height: 58px;
+    align-items: flex-start;
+    flex-direction: column;
   }
-  .avatar {
-    width: 32px;
-    height: 32px;
+  .workspace {
+    padding: 30px 14px 18px;
+  }
+  .composer {
+    padding: 0 12px 14px;
   }
 }
 </style>
 </head>
 <body>
 <div class="app">
+  <nav class="rail" aria-label="Primary">
+    <div class="profile">Q</div>
+    <div class="rail-nav">
+      <button class="rail-btn active" type="button" title="Chat">◎<span>Chat</span></button>
+      <button class="rail-btn" type="button" title="Settings">⚙<span>Setup</span></button>
+    </div>
+  </nav>
   <aside class="sidebar">
-    <div class="brand"><div class="logo">AI</div><span>cpp-ai-service</span></div>
-    <button class="new-chat" id="newChat">New chat</button>
-    <div class="side-block">
-      <p class="side-label">Provider</p>
-      <div class="field">
-        <label for="preset">Preset</label>
-        <select id="preset">
-          <option value="https://api.chatanywhere.tech/v1|gpt-3.5-turbo">ChatAnywhere Demo</option>
-          <option value="https://api.openai.com/v1|gpt-4.1-mini">OpenAI</option>
-          <option value="https://api.deepseek.com/v1|deepseek-chat">DeepSeek</option>
-          <option value="https://openrouter.ai/api/v1|openrouter/free">OpenRouter Free</option>
-          <option value="https://api.groq.com/openai/v1|llama-3.1-8b-instant">Groq</option>
-          <option value="custom|">Custom</option>
-        </select>
-      </div>
-      <div class="field">
-        <label for="baseUrl">Base URL</label>
-        <input id="baseUrl" spellcheck="false" value="https://api.chatanywhere.tech/v1">
-      </div>
-      <div class="field">
-        <label for="model">Model</label>
-        <input id="model" spellcheck="false" value="gpt-3.5-turbo">
-      </div>
-      <div class="field">
-        <label for="apiKey">API Key</label>
-        <input id="apiKey" type="password" spellcheck="false" placeholder="sk-...">
-      </div>
-      <p class="hint">No tool selected: browser calls this API directly. Select a local tool to use the C++ gateway.</p>
+    <div class="search">
+      <input id="searchInput" spellcheck="false" placeholder="Search">
     </div>
-    <div class="side-block">
-      <p class="side-label">Tool</p>
-      <select id="toolSelect">
-        <option value="">No tool</option>
-      </select>
-      <p class="hint">Tools are served by the local C++ ToolRegistry through /tools.</p>
-    </div>
-    <div class="side-block">
-      <p class="side-label">Gateway</p>
-      <p class="hint">Local tools are served by /chat through the C++ gateway. Direct API mode is only for demos because the key is visible in the browser.</p>
-    </div>
+    <button class="new-chat" id="newChat">+ New Agent</button>
+    <div class="agent-list" id="agentList"></div>
+
+    <section class="side-panel hidden" id="providerPanel">
+      <details>
+        <summary>Provider</summary>
+        <div class="field">
+          <label for="preset">Preset</label>
+          <select id="preset">
+            <option value="https://api.chatanywhere.tech/v1|gpt-3.5-turbo">ChatAnywhere Demo</option>
+            <option value="https://api.openai.com/v1|gpt-4.1-mini">OpenAI</option>
+            <option value="https://api.deepseek.com/v1|deepseek-chat">DeepSeek</option>
+            <option value="https://openrouter.ai/api/v1|openrouter/free">OpenRouter Free</option>
+            <option value="https://api.groq.com/openai/v1|llama-3.1-8b-instant">Groq</option>
+            <option value="custom|">Custom</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="baseUrl">Base URL</label>
+          <input id="baseUrl" spellcheck="false" value="https://api.chatanywhere.tech/v1">
+        </div>
+        <div class="field">
+          <label for="model">Model</label>
+          <input id="model" spellcheck="false" value="gpt-3.5-turbo">
+        </div>
+        <div class="field">
+          <label for="apiKey">API Key</label>
+          <input id="apiKey" type="password" spellcheck="false" placeholder="sk-...">
+        </div>
+      </details>
+    </section>
   </aside>
+
   <main class="main">
     <header class="topbar">
-      <div class="title">
-        <strong>Chat</strong>
-        <span class="status" id="status">Checking service...</span>
+      <div class="tabs" aria-label="Workspace modes">
+        <button class="chip active" type="button">Chat</button>
+        <button class="chip" type="button">Workspace</button>
+        <button class="chip" type="button">Agents</button>
       </div>
+      <span class="status" id="status">Checking service...</span>
     </header>
-    <section class="messages" id="messages"></section>
+
+    <section class="workspace" id="workspace">
+      <div class="hero" id="welcome">
+        <h1>Hi, I am <span class="mark">QClaw</span></h1>
+        <p>Build agents, connect tools, and get work done faster.</p>
+      </div>
+
+      <div class="conversation">
+        <section class="messages" id="messages"></section>
+      </div>
+    </section>
+
     <form class="composer" id="chatForm">
       <div class="composer-inner">
-        <textarea id="messageInput" rows="1" placeholder="Message cpp-ai-service"></textarea>
-        <button class="send" id="sendButton" type="submit" title="Send">↑</button>
+        <textarea id="messageInput" rows="1" placeholder="Ask anything or describe a task"></textarea>
+        <div class="composer-actions">
+          <div class="mode-tools">
+            <select class="mini-select" id="modeSelect" title="Chat mode">
+              <option value="auto">Auto</option>
+              <option value="model">Model</option>
+              <option value="rag">RAG</option>
+              <option value="mcp">MCP</option>
+            </select>
+            <select class="mini-select" id="toolMirror" title="Gateway tool">
+              <option value="">Connect</option>
+            </select>
+          </div>
+          <button class="send" id="sendButton" type="submit" title="Send">↑</button>
+        </div>
       </div>
     </form>
   </main>
 </div>
 <script>
 const messages = document.getElementById('messages');
+const workspace = document.getElementById('workspace');
+const welcome = document.getElementById('welcome');
 const form = document.getElementById('chatForm');
 const input = document.getElementById('messageInput');
 const sendButton = document.getElementById('sendButton');
 const statusEl = document.getElementById('status');
-const toolSelect = document.getElementById('toolSelect');
+const toolMirror = document.getElementById('toolMirror');
+const modeSelect = document.getElementById('modeSelect');
 const newChat = document.getElementById('newChat');
+const agentList = document.getElementById('agentList');
+const providerPanel = document.getElementById('providerPanel');
 const preset = document.getElementById('preset');
 const baseUrl = document.getElementById('baseUrl');
 const model = document.getElementById('model');
 const apiKey = document.getElementById('apiKey');
 const history = [];
+const agents = [
+  { id: 'qclaw', name: 'QClaw', description: 'Your always-on AI workspace' }
+];
+let activeAgentId = 'qclaw';
+let providerPanelOpen = false;
+
+function showProviderPanel() {
+  providerPanelOpen = true;
+  providerPanel.classList.remove('hidden');
+}
 
 function setStatus(text, state) {
   statusEl.textContent = text;
@@ -315,6 +570,7 @@ function setStatus(text, state) {
 }
 
 function addMessage(role, text) {
+  welcome.style.display = 'none';
   const item = document.createElement('article');
   item.className = 'message ' + role;
   const avatar = document.createElement('div');
@@ -326,15 +582,108 @@ function addMessage(role, text) {
   item.appendChild(avatar);
   item.appendChild(bubble);
   messages.appendChild(item);
-  messages.scrollTop = messages.scrollHeight;
+  workspace.scrollTop = workspace.scrollHeight;
   return bubble;
 }
 
 function resetChat() {
   messages.innerHTML = '';
   history.length = 0;
-  addMessage('assistant', 'Hi, I am cpp-ai-service. Fill an API key to chat through the selected provider, or select a local tool from the sidebar.');
+  welcome.style.display = '';
   input.focus();
+}
+
+function activeAgent() {
+  return agents.find((agent) => agent.id === activeAgentId) || agents[0];
+}
+
+function updateWelcome() {
+  const agent = activeAgent();
+  const mark = welcome.querySelector('.mark');
+  if (mark) mark.textContent = agent.name;
+}
+
+function selectAgent(agentId) {
+  activeAgentId = agentId;
+  showProviderPanel();
+  renderAgents();
+  resetChat();
+  updateWelcome();
+}
+
+function createAgentCard(agent) {
+  const card = document.createElement('div');
+  card.className = 'agent-card' + (agent.id === activeAgentId ? ' active' : '');
+  card.dataset.agentId = agent.id;
+
+  const avatar = document.createElement('div');
+  avatar.className = 'agent-avatar';
+  avatar.textContent = agent.name.trim().charAt(0).toUpperCase() || 'A';
+
+  const body = document.createElement('div');
+  const name = document.createElement('div');
+  name.className = 'agent-name';
+  name.textContent = agent.name;
+  const desc = document.createElement('div');
+  desc.className = 'agent-desc';
+  desc.textContent = agent.description;
+
+  body.appendChild(name);
+  body.appendChild(desc);
+  const deleteButton = document.createElement('button');
+  deleteButton.className = 'delete-agent';
+  deleteButton.type = 'button';
+  deleteButton.title = 'Delete agent';
+  deleteButton.textContent = 'x';
+  deleteButton.addEventListener('click', (event) => {
+    event.stopPropagation();
+    deleteAgent(agent.id);
+  });
+
+  card.appendChild(avatar);
+  card.appendChild(body);
+  card.appendChild(deleteButton);
+  card.addEventListener('click', () => selectAgent(agent.id));
+  return card;
+}
+
+function renderAgents() {
+  providerPanel.remove();
+  agentList.innerHTML = '';
+  agents.forEach((agent) => {
+    const item = document.createElement('div');
+    item.className = 'agent-item';
+    item.appendChild(createAgentCard(agent));
+    if (providerPanelOpen && agent.id === activeAgentId) {
+      providerPanel.classList.remove('hidden');
+      item.appendChild(providerPanel);
+    }
+    agentList.appendChild(item);
+  });
+}
+
+function addAgent() {
+  const nextNumber = agents.length + 1;
+  const agent = {
+    id: 'agent-' + nextNumber + '-' + Date.now(),
+    name: 'Agent ' + nextNumber,
+    description: 'New private workspace'
+  };
+  agents.push(agent);
+  selectAgent(agent.id);
+}
+
+function deleteAgent(agentId) {
+  if (agents.length <= 1) return;
+  const index = agents.findIndex((agent) => agent.id === agentId);
+  if (index === -1) return;
+  agents.splice(index, 1);
+  if (activeAgentId === agentId) {
+    activeAgentId = agents[Math.max(0, index - 1)].id;
+    resetChat();
+    updateWelcome();
+  }
+  renderAgents();
 }
 
 function resizeInput() {
@@ -352,17 +701,21 @@ async function loadHealth() {
   }
 }
 
+function appendToolOption(select, value, label, title) {
+  const option = document.createElement('option');
+  option.value = value;
+  option.textContent = label;
+  option.title = title || '';
+  select.appendChild(option);
+}
+
 async function loadTools() {
   try {
     const res = await fetch('/tools');
     const data = await res.json();
     if (!data.ok || !Array.isArray(data.tools)) return;
     data.tools.forEach((tool) => {
-      const option = document.createElement('option');
-      option.value = tool.name;
-      option.textContent = tool.name;
-      option.title = tool.description || '';
-      toolSelect.appendChild(option);
+      appendToolOption(toolMirror, tool.name, tool.name, tool.description || '');
     });
   } catch (err) {
     // Tools are optional for the UI.
@@ -424,13 +777,12 @@ async function sendDirect(text) {
 
 async function sendMessage(text) {
   saveProviderConfig();
-  if (!toolSelect.value) {
+  const selectedTool = toolMirror.value;
+  if (!selectedTool) {
     return sendDirect(text);
   }
 
-  const payload = { message: text };
-  if (toolSelect.value) payload.tool = toolSelect.value;
-
+  const payload = { message: text, tool: selectedTool };
   const res = await fetch('/chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -457,6 +809,10 @@ preset.addEventListener('change', () => {
   saveProviderConfig();
 });
 
+toolMirror.addEventListener('change', () => {
+  if (toolMirror.value) modeSelect.value = 'mcp';
+});
+
 form.addEventListener('submit', async (event) => {
   event.preventDefault();
   const text = input.value.trim();
@@ -467,12 +823,13 @@ form.addEventListener('submit', async (event) => {
   resizeInput();
   input.disabled = true;
   sendButton.disabled = true;
-  setStatus(toolSelect.value ? 'Calling local gateway...' : 'Calling provider...');
+  const selectedTool = toolMirror.value;
+  setStatus(selectedTool ? 'Calling local gateway...' : 'Calling provider...');
   const pending = addMessage('assistant', '...');
 
   try {
     pending.textContent = await sendMessage(text);
-    setStatus(toolSelect.value ? 'Local gateway mode' : 'Direct API mode', 'ok');
+    setStatus(selectedTool ? 'Local gateway mode' : 'Direct API mode', 'ok');
   } catch (err) {
     pending.textContent = 'Request failed: ' + err.message + '\n\nIf browser direct mode is blocked by CORS, select a local tool or run the service with provider env vars.';
     setStatus('Request failed', 'error');
@@ -490,8 +847,10 @@ input.addEventListener('keydown', (event) => {
     form.requestSubmit();
   }
 });
-newChat.addEventListener('click', resetChat);
+newChat.addEventListener('click', addAgent);
 
+renderAgents();
+updateWelcome();
 resetChat();
 resizeInput();
 loadProviderConfig();
