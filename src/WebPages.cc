@@ -29,6 +29,7 @@ std::string renderHomePage()
   --shadow: 0 18px 80px rgba(0, 0, 0, 0.38);
 }
 * { box-sizing: border-box; }
+.hidden { display: none !important; }
 html, body { height: 100%; }
 body {
   margin: 0;
@@ -278,6 +279,129 @@ input, select {
 }
 .status.ok { color: var(--accent); }
 .status.error { color: var(--danger); }
+.top-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.auth-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.auth-user {
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+.auth-button {
+  min-height: 30px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--text);
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.auth-button.primary {
+  border-color: rgba(25, 182, 255, 0.5);
+  background: rgba(25, 182, 255, 0.18);
+}
+.auth-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.48);
+  padding: 18px;
+}
+.auth-modal.hidden {
+  display: none;
+}
+.auth-dialog {
+  width: min(380px, 100%);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 8px;
+  background: #20241f;
+  box-shadow: var(--shadow);
+  padding: 14px;
+}
+.auth-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.auth-title {
+  margin: 0;
+  font-size: 16px;
+}
+.auth-close {
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--muted);
+  cursor: pointer;
+  font-weight: 900;
+}
+.auth-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+.auth-tab {
+  min-height: 32px;
+  border: 0;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--muted);
+  cursor: pointer;
+  font-weight: 800;
+}
+.auth-tab.active {
+  background: rgba(25, 182, 255, 0.2);
+  color: var(--text);
+}
+.auth-form {
+  display: grid;
+  gap: 10px;
+}
+.auth-form.hidden {
+  display: none;
+}
+.auth-submit {
+  min-height: 36px;
+  border: 0;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #19b6ff, #087bff);
+  color: white;
+  font-weight: 900;
+  cursor: pointer;
+}
+.auth-note {
+  min-height: 18px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+.auth-note.error {
+  color: var(--danger);
+}
+.auth-note.ok {
+  color: var(--accent-2);
+}
 .workspace {
   min-height: 0;
   overflow-y: auto;
@@ -500,7 +624,14 @@ textarea {
         <button class="chip" type="button">Workspace</button>
         <button class="chip" type="button">Agents</button>
       </div>
-      <span class="status" id="status">Checking service...</span>
+      <div class="top-actions">
+        <span class="status" id="status">Checking service...</span>
+        <div class="auth-bar">
+          <span class="auth-user" id="authUser">Guest</span>
+          <button class="auth-button primary" id="authOpen" type="button">Sign in</button>
+          <button class="auth-button hidden" id="authLogout" type="button">Sign out</button>
+        </div>
+      </div>
     </header>
 
     <section class="workspace" id="workspace">
@@ -535,6 +666,30 @@ textarea {
     </form>
   </main>
 </div>
+<div class="auth-modal hidden" id="authModal" aria-hidden="true">
+  <div class="auth-dialog" role="dialog" aria-modal="true" aria-labelledby="authTitle">
+    <div class="auth-head">
+      <h2 class="auth-title" id="authTitle">Account</h2>
+      <button class="auth-close" id="authClose" type="button" title="Close">x</button>
+    </div>
+    <div class="auth-tabs">
+      <button class="auth-tab active" id="loginTab" type="button">Login</button>
+      <button class="auth-tab" id="registerTab" type="button">Register</button>
+    </div>
+    <form class="auth-form" id="loginForm">
+      <input id="loginUsername" autocomplete="username" spellcheck="false" placeholder="Username">
+      <input id="loginPassword" type="password" autocomplete="current-password" placeholder="Password">
+      <button class="auth-submit" type="submit">Login</button>
+    </form>
+    <form class="auth-form hidden" id="registerForm">
+      <input id="registerUsername" autocomplete="username" spellcheck="false" placeholder="Username">
+      <input id="registerPassword" type="password" autocomplete="new-password" placeholder="Password">
+      <input id="registerInvite" spellcheck="false" placeholder="Invite code, if required">
+      <button class="auth-submit" type="submit">Register</button>
+    </form>
+    <p class="auth-note" id="authNote"></p>
+  </div>
+</div>
 <script>
 const messages = document.getElementById('messages');
 const workspace = document.getElementById('workspace');
@@ -552,12 +707,28 @@ const preset = document.getElementById('preset');
 const baseUrl = document.getElementById('baseUrl');
 const model = document.getElementById('model');
 const apiKey = document.getElementById('apiKey');
+const authModal = document.getElementById('authModal');
+const authOpen = document.getElementById('authOpen');
+const authClose = document.getElementById('authClose');
+const authLogout = document.getElementById('authLogout');
+const authUser = document.getElementById('authUser');
+const loginTab = document.getElementById('loginTab');
+const registerTab = document.getElementById('registerTab');
+const loginForm = document.getElementById('loginForm');
+const registerForm = document.getElementById('registerForm');
+const loginUsername = document.getElementById('loginUsername');
+const loginPassword = document.getElementById('loginPassword');
+const registerUsername = document.getElementById('registerUsername');
+const registerPassword = document.getElementById('registerPassword');
+const registerInvite = document.getElementById('registerInvite');
+const authNote = document.getElementById('authNote');
 const history = [];
 const agents = [
   { id: 'qclaw', name: 'QClaw', description: 'Your always-on AI workspace' }
 ];
 let activeAgentId = 'qclaw';
 let providerPanelOpen = false;
+let currentUser = null;
 
 function showProviderPanel() {
   providerPanelOpen = true;
@@ -567,6 +738,119 @@ function showProviderPanel() {
 function setStatus(text, state) {
   statusEl.textContent = text;
   statusEl.className = 'status' + (state ? ' ' + state : '');
+}
+
+function setAuthNote(text, state) {
+  authNote.textContent = text || '';
+  authNote.className = 'auth-note' + (state ? ' ' + state : '');
+}
+
+function authToken() {
+  return localStorage.getItem('cppAiSessionToken') || '';
+}
+
+function setAuthToken(token) {
+  if (token) {
+    localStorage.setItem('cppAiSessionToken', token);
+  } else {
+    localStorage.removeItem('cppAiSessionToken');
+  }
+}
+
+function renderAuth() {
+  if (currentUser) {
+    authUser.textContent = currentUser.username;
+    authOpen.classList.add('hidden');
+    authLogout.classList.remove('hidden');
+  } else {
+    authUser.textContent = 'Guest';
+    authOpen.classList.remove('hidden');
+    authLogout.classList.add('hidden');
+  }
+}
+
+function openAuthModal(mode) {
+  authModal.classList.remove('hidden');
+  authModal.setAttribute('aria-hidden', 'false');
+  switchAuthMode(mode || 'login');
+  setAuthNote('');
+  setTimeout(() => {
+    if (mode === 'register') registerUsername.focus();
+    else loginUsername.focus();
+  }, 0);
+}
+
+function closeAuthModal() {
+  authModal.classList.add('hidden');
+  authModal.setAttribute('aria-hidden', 'true');
+}
+
+function switchAuthMode(mode) {
+  const isRegister = mode === 'register';
+  loginTab.classList.toggle('active', !isRegister);
+  registerTab.classList.toggle('active', isRegister);
+  loginForm.classList.toggle('hidden', isRegister);
+  registerForm.classList.toggle('hidden', !isRegister);
+  setAuthNote('');
+}
+
+async function readJsonResponse(res) {
+  const raw = await res.text();
+  try {
+    return JSON.parse(raw);
+  } catch (err) {
+    throw new Error('Non-JSON response: ' + raw.slice(0, 120));
+  }
+}
+
+async function refreshCurrentUser() {
+  const token = authToken();
+  if (!token) {
+    currentUser = null;
+    renderAuth();
+    return;
+  }
+
+  try {
+    const res = await fetch('/auth/me', {
+      headers: { 'Authorization': 'Bearer ' + token }
+    });
+    const data = await readJsonResponse(res);
+    if (!res.ok || data.ok === false) throw new Error(data.error || ('HTTP ' + res.status));
+    currentUser = data.user;
+  } catch (err) {
+    currentUser = null;
+    setAuthToken('');
+  }
+  renderAuth();
+}
+
+async function submitLogin(username, password) {
+  const res = await fetch('/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password })
+  });
+  const data = await readJsonResponse(res);
+  if (!res.ok || data.ok === false) throw new Error(data.error || ('HTTP ' + res.status));
+  setAuthToken(data.session_token || '');
+  currentUser = data.user;
+  renderAuth();
+  closeAuthModal();
+  setStatus('Signed in as ' + currentUser.username, 'ok');
+}
+
+async function submitRegister(username, password, inviteCode) {
+  const payload = { username, password };
+  if (inviteCode) payload.invite_code = inviteCode;
+  const res = await fetch('/auth/register', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  const data = await readJsonResponse(res);
+  if (!res.ok || data.ok === false) throw new Error(data.error || ('HTTP ' + res.status));
+  await submitLogin(username, password);
 }
 
 function addMessage(role, text) {
@@ -783,9 +1067,12 @@ async function sendMessage(text) {
   }
 
   const payload = { message: text, tool: selectedTool };
+  const headers = { 'Content-Type': 'application/json' };
+  const token = authToken();
+  if (token) headers.Authorization = 'Bearer ' + token;
   const res = await fetch('/chat', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: JSON.stringify(payload)
   });
   const data = await res.json();
@@ -848,6 +1135,37 @@ input.addEventListener('keydown', (event) => {
   }
 });
 newChat.addEventListener('click', addAgent);
+authOpen.addEventListener('click', () => openAuthModal('login'));
+authClose.addEventListener('click', closeAuthModal);
+authModal.addEventListener('click', (event) => {
+  if (event.target === authModal) closeAuthModal();
+});
+loginTab.addEventListener('click', () => switchAuthMode('login'));
+registerTab.addEventListener('click', () => switchAuthMode('register'));
+authLogout.addEventListener('click', () => {
+  setAuthToken('');
+  currentUser = null;
+  renderAuth();
+  setStatus('Signed out', 'ok');
+});
+loginForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  setAuthNote('Signing in...');
+  try {
+    await submitLogin(loginUsername.value.trim(), loginPassword.value);
+  } catch (err) {
+    setAuthNote(err.message, 'error');
+  }
+});
+registerForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  setAuthNote('Creating account...');
+  try {
+    await submitRegister(registerUsername.value.trim(), registerPassword.value, registerInvite.value.trim());
+  } catch (err) {
+    setAuthNote(err.message, 'error');
+  }
+});
 
 renderAgents();
 updateWelcome();
@@ -856,6 +1174,7 @@ resizeInput();
 loadProviderConfig();
 loadHealth();
 loadTools();
+refreshCurrentUser();
 </script>
 </body>
 </html>)HTML";

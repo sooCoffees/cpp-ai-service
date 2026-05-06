@@ -3,6 +3,7 @@ build/
 build-asan/
 bin/
 lib/
+data/
 
 # Logs
 log/

@@ -358,3 +358,69 @@ cmake --build build -j 4
 GitHub upload:
 
 - Already uploaded to GitHub: No, pending this upload.
+
+## 2026-05-06
+
+Changes:
+
+- Added a demo local authentication boundary with `UserStore`.
+- Added `include/UserStore.h` and `src/UserStore.cc`.
+- Added `POST /auth/register`, `POST /auth/login`, and `GET /auth/me`.
+- Added mutex protection for user records, sessions, and registration rate-limit state.
+- Added local user persistence through `data/users.jsonl`.
+- Added `data/` to `.gitignore`.
+- Added optional invite-code registration through `CPP_AI_REGISTRATION_INVITE_CODE`.
+- Added configurable in-memory registration throttling through `CPP_AI_REGISTRATION_LIMIT_PER_MINUTE`.
+- Added configurable session TTL through `CPP_AI_SESSION_TTL_SECONDS`.
+- Extended `/health` with demo auth metadata without exposing secrets.
+- Kept `/chat` public while allowing the browser to send a bearer token when one exists.
+- Added a Login/Register modal to the main `/` page.
+- Added top-right account state showing `Guest`, signed-in username, `Sign in`, and `Sign out`.
+- Stored the demo session token in browser `localStorage` for local testing.
+- Restored signed-in state on page load through `GET /auth/me`.
+- Added `REGISTRATION_SYSTEM_RISKS.md`.
+- Updated `extension.md` with future user ownership and agent access-control notes.
+- Updated README with auth endpoints, auth UI behavior, configuration, limitations, and future extension direction.
+
+Why:
+
+- The project needed a runnable registration/login demo before later agent ownership, quotas, chat history, and protected `/agents` routes.
+- Authentication should stay separate from `AiClient`, `ToolRegistry`, provider routing, and RAG logic.
+- The first version should be useful for local learning without pretending to be production-grade authentication.
+- Future extension work needs a stable bearer-token boundary instead of adding ad hoc user parsing to each route.
+
+Verification:
+
+```bash
+cmake --build build -j 4
+```
+
+Verified endpoints:
+
+```bash
+curl -i --max-time 3 http://127.0.0.1:8080/health
+curl -i --max-time 3 http://127.0.0.1:8080/tools
+curl -i --max-time 3 http://127.0.0.1:8080/
+curl -i --max-time 3 -X POST http://127.0.0.1:8080/chat \
+  -H 'Content-Type: application/json' \
+  -d '{"message":"auth smoke old chat"}'
+curl -i --max-time 3 -X POST http://127.0.0.1:8080/auth/register \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"ui_demo_0506","password":"password123"}'
+curl -i --max-time 3 -X POST http://127.0.0.1:8080/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"ui_demo_0506","password":"password123"}'
+curl -i --max-time 3 http://127.0.0.1:8080/auth/me \
+  -H 'Authorization: Bearer <session_token>'
+```
+
+Notes:
+
+- Password storage is intentionally marked `demo_only_fnv1a`; replace it with Argon2, bcrypt, scrypt, or PBKDF2 before production use.
+- Sessions are currently process-local.
+- `data/users.jsonl` is local runtime data and must not be committed.
+- `/chat` is still guest-accessible by design.
+
+GitHub upload:
+
+- Already uploaded to GitHub: No, pending this upload.

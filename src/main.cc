@@ -13,6 +13,7 @@
 #include "HttpCodec.h"
 #include "RagStore.h"
 #include "ToolRegistry.h"
+#include "UserStore.h"
 #include "WebPages.h"
 #include "memoryPool.h"
 // 日志文件滚动大小为1MB (1*1024*1024 bytes)
@@ -39,6 +40,21 @@ RouteResult makeRouteResult(const std::string &response, const std::string &stat
     result.toolUsed = false;
     result.upstreamLatencyMs = 0;
     return result;
+}
+
+std::string userJson(const UserProfile &user)
+{
+    return "{\"username\":\"" + jsonEscape(user.username) + "\",\"role\":\"" + jsonEscape(user.role) + "\"}";
+}
+
+std::string authOkUserJson(const UserProfile &user)
+{
+    return "{\"ok\":true,\"user\":" + userJson(user) + "}";
+}
+
+RouteResult authBadRequest(const std::string &message)
+{
+    return makeRouteResult(jsonResponse("400 Bad Request", jsonError(message)), "400 Bad Request");
 }
 
 RouteResult handleChatRequest(const HttpRequest &request, AiClient &aiClient)
@@ -70,6 +86,96 @@ RouteResult handleChatRequest(const HttpRequest &request, AiClient &aiClient)
     result.toolName = chatResponse.toolName;
     result.upstreamLatencyMs = chatResponse.upstreamLatencyMs;
     return result;
+}
+
+RouteResult handleRegisterRequest(const HttpRequest &request, UserStore &users, const std::string &clientId)
+{
+    if (request.method != "POST")
+    {
+        return makeRouteResult(jsonResponse("405 Method Not Allowed", jsonError("/auth/register expects POST")),
+                               "405 Method Not Allowed");
+    }
+    if (request.body.size() > 8192)
+    {
+        return authBadRequest("request body is too large");
+    }
+
+    std::string username;
+    std::string password;
+    std::string inviteCode;
+    if (!extractJsonStringField(request.body, "username", &username) ||
+        !extractJsonStringField(request.body, "password", &password))
+    {
+        return authBadRequest("request body must contain string fields username and password");
+    }
+    extractJsonStringField(request.body, "invite_code", &inviteCode);
+
+    const AuthResult auth = users.registerUser(username, password, inviteCode, clientId);
+    if (!auth.ok)
+    {
+        return authBadRequest(auth.error);
+    }
+
+    return makeRouteResult(jsonResponse("200 OK", authOkUserJson(auth.user)), "200 OK");
+}
+
+RouteResult handleLoginRequest(const HttpRequest &request, UserStore &users)
+{
+    if (request.method != "POST")
+    {
+        return makeRouteResult(jsonResponse("405 Method Not Allowed", jsonError("/auth/login expects POST")),
+                               "405 Method Not Allowed");
+    }
+    if (request.body.size() > 8192)
+    {
+        return authBadRequest("request body is too large");
+    }
+
+    std::string username;
+    std::string password;
+    if (!extractJsonStringField(request.body, "username", &username) ||
+        !extractJsonStringField(request.body, "password", &password))
+    {
+        return authBadRequest("request body must contain string fields username and password");
+    }
+
+    const AuthResult auth = users.login(username, password);
+    if (!auth.ok)
+    {
+        return makeRouteResult(jsonResponse("401 Unauthorized", jsonError(auth.error)), "401 Unauthorized");
+    }
+
+    std::ostringstream body;
+    body << "{"
+         << "\"ok\":true,"
+         << "\"session_token\":\"" << jsonEscape(auth.session.token) << "\","
+         << "\"user\":" << userJson(auth.user)
+         << "}";
+    return makeRouteResult(jsonResponse("200 OK", body.str()), "200 OK");
+}
+
+RouteResult handleMeRequest(const HttpRequest &request, UserStore &users)
+{
+    if (request.method != "GET")
+    {
+        return makeRouteResult(jsonResponse("405 Method Not Allowed", jsonError("/auth/me expects GET")),
+                               "405 Method Not Allowed");
+    }
+
+    std::string authorization;
+    std::map<std::string, std::string>::const_iterator header = request.headers.find("authorization");
+    if (header != request.headers.end())
+    {
+        authorization = header->second;
+    }
+
+    const AuthResult auth = users.authenticateBearerToken(authorization);
+    if (!auth.ok)
+    {
+        return makeRouteResult(jsonResponse("401 Unauthorized", jsonError(auth.error)), "401 Unauthorized");
+    }
+
+    return makeRouteResult(jsonResponse("200 OK", authOkUserJson(auth.user)), "200 OK");
 }
 
 RouteResult handleToolsRequest(const HttpRequest &request, const ToolRegistry &tools)
@@ -165,13 +271,25 @@ RouteResult handleRagIngestRequest(const HttpRequest &request, InMemoryRagStore 
     return makeRouteResult(jsonResponse("200 OK", body.str()), "200 OK");
 }
 
-RouteResult handleHealthRequest(const AiClient &aiClient)
+RouteResult handleHealthRequest(const AiClient &aiClient, const UserStore &users)
 {
-    return makeRouteResult(jsonResponse("200 OK", "{\"ok\":true,\"ai\":" + aiClient.configJson() + "}"), "200 OK");
+    return makeRouteResult(jsonResponse("200 OK", "{\"ok\":true,\"ai\":" + aiClient.configJson() + ",\"auth\":" + users.configJson() + "}"), "200 OK");
 }
 
-RouteResult handleRequest(const HttpRequest &request, AiClient &aiClient, const ToolRegistry &tools, InMemoryRagStore &ragStore)
+RouteResult handleRequest(const HttpRequest &request, AiClient &aiClient, const ToolRegistry &tools, InMemoryRagStore &ragStore, UserStore &users, const std::string &clientId)
 {
+    if (request.path == "/auth/register")
+    {
+        return handleRegisterRequest(request, users, clientId);
+    }
+    if (request.path == "/auth/login")
+    {
+        return handleLoginRequest(request, users);
+    }
+    if (request.path == "/auth/me")
+    {
+        return handleMeRequest(request, users);
+    }
     if (request.path == "/chat")
     {
         return handleChatRequest(request, aiClient);
@@ -182,7 +300,7 @@ RouteResult handleRequest(const HttpRequest &request, AiClient &aiClient, const 
     }
     if (request.path == "/health")
     {
-        return handleHealthRequest(aiClient);
+        return handleHealthRequest(aiClient, users);
     }
     if (request.path == "/mcp/tools")
     {
@@ -208,7 +326,7 @@ RouteResult handleRequest(const HttpRequest &request, AiClient &aiClient, const 
     return makeRouteResult(jsonResponse("404 Not Found", jsonError("route not found")), "404 Not Found");
 }
 
-RouteResult handleRawRequest(const std::string &raw, AiClient &aiClient, const ToolRegistry &tools, InMemoryRagStore &ragStore, HttpRequest *parsedRequest)
+RouteResult handleRawRequest(const std::string &raw, AiClient &aiClient, const ToolRegistry &tools, InMemoryRagStore &ragStore, UserStore &users, const std::string &clientId, HttpRequest *parsedRequest)
 {
     HttpRequest request;
     if (!parseHttpRequest(raw, &request))
@@ -226,7 +344,7 @@ RouteResult handleRawRequest(const std::string &raw, AiClient &aiClient, const T
         *parsedRequest = request;
     }
 
-    return handleRequest(request, aiClient, tools, ragStore);
+    return handleRequest(request, aiClient, tools, ragStore, users, clientId);
 }
 
 }
@@ -241,8 +359,15 @@ public:
         , tools_(ToolRegistry::createDefault(ragStore_))
         , aiConfig_(AiClientConfig::fromEnvironment())
         , aiClient_(&tools_, aiConfig_)
+        , users_("data/users.jsonl")
     {
         ragStore_->seedDefaults();
+
+        std::string userLoadError;
+        if (!users_.load(&userLoadError))
+        {
+            LOG_ERROR << "failed to load user store: " << userLoadError.c_str();
+        }
 
         if (aiConfig_.provider != "stub" && aiConfig_.provider != "ollama" && !aiConfig_.apiKeyConfigured)
         {
@@ -285,7 +410,7 @@ private:
         const std::string request = buf->retrieveAllAsString();
         HttpRequest parsedRequest;
         const auto started = std::chrono::steady_clock::now();
-        const RouteResult routeResult = handleRawRequest(request, aiClient_, tools_, *ragStore_, &parsedRequest);
+        const RouteResult routeResult = handleRawRequest(request, aiClient_, tools_, *ragStore_, users_, conn->peerAddress().toIp(), &parsedRequest);
         const auto finished = std::chrono::steady_clock::now();
         const long latencyMs = static_cast<long>(
             std::chrono::duration_cast<std::chrono::milliseconds>(finished - started).count());
@@ -309,6 +434,7 @@ private:
     ToolRegistry tools_;
     AiClientConfig aiConfig_;
     AiClient aiClient_;
+    UserStore users_;
 
 };
 AsyncLogging* g_asyncLog = NULL;
