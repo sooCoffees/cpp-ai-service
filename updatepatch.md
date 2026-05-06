@@ -333,4 +333,28 @@ Browser verification:
 
 GitHub upload:
 
+- Already uploaded to GitHub: Yes, commit `9333901`.
+
+## 2026-05-06
+
+Changes:
+
+- Added `future_extension.md`.
+- Documented future optional extensions for registration, login, chat sessions, history sync, menu pages, MySQL persistence, speech recognition, text-to-speech, image upload, image recognition, MCP config files, multi-model strategy routing, and async job queues.
+- Mapped the reference handler/resource/module structure into a future `cpp-ai-service` shape while preserving the current C++ gateway focus.
+
+Why:
+
+- The future extension plan should be uploaded as project roadmap documentation.
+- The project needs a clear separation between the current agent workspace UI and later full application features.
+- The roadmap helps keep later features scoped so the project does not become only a generic chat website.
+
+Verification:
+
+```bash
+cmake --build build -j 4
+```
+
+GitHub upload:
+
 - Already uploaded to GitHub: No, pending this upload.
