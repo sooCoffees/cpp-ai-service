@@ -378,7 +378,7 @@ Changes:
 - Added top-right account state showing `Guest`, signed-in username, `Sign in`, and `Sign out`.
 - Stored the demo session token in browser `localStorage` for local testing.
 - Restored signed-in state on page load through `GET /auth/me`.
-- Added `REGISTRATION_SYSTEM_RISKS.md`.
+- Prepared local registration risk notes.
 - Prepared future user ownership and agent access-control notes for local planning.
 - Updated README with auth endpoints, auth UI behavior, configuration, limitations, and future extension direction.
 
@@ -420,6 +420,36 @@ Notes:
 - Sessions are currently process-local.
 - `data/users.jsonl` is local runtime data and must not be committed.
 - `/chat` is still guest-accessible by design.
+
+GitHub upload:
+
+- Already uploaded to GitHub: No, pending this upload.
+
+## 2026-05-08
+
+Changes:
+
+- Removed `REGISTRATION_SYSTEM_RISKS.md` from Git tracking.
+- Added `REGISTRATION_SYSTEM_RISKS.md` to `.gitignore`.
+- Kept the registration risk notes as a local-only planning file.
+
+Why:
+
+- Registration risk notes are local planning material and should not be uploaded to GitHub.
+- Public project documentation should stay focused on runnable code, API behavior, and user-facing setup.
+
+Verification:
+
+```bash
+cmake --build build -j 4
+git status --short --branch
+git diff --cached --name-only
+```
+
+Notes:
+
+- `REGISTRATION_SYSTEM_RISKS.md` remains available in the local workspace.
+- It is intentionally ignored for future GitHub uploads.
 
 GitHub upload:
 
