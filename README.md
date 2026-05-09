@@ -27,7 +27,7 @@ The project is not meant to be just a thin chatbot wrapper. Its focus is the bac
 - request metadata logging for method, path, status, cache hit, tool usage, body size, upstream latency, and total latency
 - `HttpCodec` helper for HTTP request parsing and response formatting
 - `WebPages` helper for embedded browser pages
-- QClaw-style main browser workspace with a compact rail, agent sidebar, top mode chips, and bottom composer
+- Customize main browser workspace with a compact rail, agent sidebar, top mode chips, and bottom composer
 - main page login/register modal connected to demo local auth
 - client-side agent cards on the main page, including temporary create/delete/select behavior
 - Provider settings panel shown as a child panel under the selected agent card
